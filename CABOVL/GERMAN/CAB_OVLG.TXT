@@ -1,0 +1,155 @@
+         HTTP-Modul fr CAB unter STinG/STiK/IConnect/MintNet
+
+                               CAB.OVL
+
+
+                                 von
+
+                           Olivier Booklage
+
+
+Inhaltsverzeichnis
+==================
+
+ 1  šber CAB.OVL
+
+ 2  Installation
+
+ 3  Konfiguration
+
+ 4  Haftung
+
+ 5  Fehlerbericht
+
+ 6  History
+
+ 7  Autor
+
+ 8  Beta-Tester
+
+
+
+1  šber CAB.OVL
+***************
+
+CAB.OVL ist ein Modul fr Cristal Atari Browser 'CAB' fr HTTP-
+Protokoll unter TCP/IP-Stack STinG, STiK, IConnect oder MintNet mit
+GlueStik.
+
+Untersttzung von Server-Autorisierung und Cookies auch bei CAB < 2.7.
+
+Fr STiK-Benutzer: STIK.ACC enth„lt essentielle TCP/IP-Routinen
+auerhalb des eingebauten Dialers, darum mu es resident gehalten
+werden!
+
+       ** Dieses ist eine BETA-VERSION nur fr Beta-Tester. **
+
+
+
+2  Installation
+***************
+
+Sichern Sie Ihr altes CAB.OVL und legen Sie das Neue dann zusammen mit
+dem CAB_OVL.RSC in Ihren Ordner CAB/MODULES/
+
+Wenn Sie das deutschsprachige CAB_OVL.RSC aus dem Ordner GERMAN
+benutzen wollen, so legen Sie dieses anstatt des englischsprachigen
+CAB_OVL.RSC in den Ordner CAB/MODULES/.
+
+
+
+3  Konfiguration
+****************
+
+Rufen Sie http://cab.ovl in CAB auf, um CABOVL zu konfigurieren.
+
+
+
+4  Haftung
+**********
+
+Vom Autor wurde alles m”gliche fr einen problemlosen Betrieb
+unternommen. Eine Haftung fr mittelbare oder unmittelbare Sch„den
+kann nicht bernommen werden. Die Benutzung dieser Software geschieht
+auf eigenes Risiko.
+
+Viel Vergngen damit.
+
+
+
+5  Fehlerbericht
+****************
+
+   ù CAB 2.5X kann keine URL > 81 Zeichen anfordern, einige Formulare
+     k”nnen mit dieser Version nicht korrekt versandt werden.
+
+   ù Bei manchen Servern mit Cookies wird eine Fehlermeldung 'bad
+     request' zurckgeschickt. Als Notl”sung k”nnen Sie in der
+     Konfiguration 'Cookie ablehnen' einstellen, wenn das Problem
+     hartn„ckig ist.
+
+   ù Viele Fehler kommen vom Netzwerk, Servern oder verschiedenen
+     CAB-Versionen, bevor Sie mir also schreiben ( siehe Autor ),
+     *VERGEWISSERN SIE SICH, DASS CAB.OVL SCHULD AN DER FEHLFUNKTION
+     IST* durch Tests auf anderen Plattformen und mit anderen CAB.OVLs.
+     Senden Sie mir dann bitte das CAB.OVL-Logfile und geben Sie die
+     verwendeten Versionen von CAB und von CAB.OVL an.
+
+
+
+6  History
+**********
+
+Siehe Historydatei
+
+
+
+7  Autor
+********
+
+
+                |         Olivier Booklage          |
+                |      4, cours des longs prŠs      |
+                |    92100 Boulogne Billancourt     |
+                |              France.              |
+                |                                   |
+                | www   : http://obooklage.free.fr/ |
+
+
+
+8  Beta-Tester
+**************
+
+   ù Ronald Andersson
+
+   ù Jan Daldrup
+
+   ù Bernd Maedicke
+
+   ù the beazt
+
+   ù Pat Morales
+
+   ù Derryck Croker
+
+   ù Joel Houplon
+
+   ù Harald Placke
+
+   ù Pascal Ricard
+
+   ù Matthias Jaap
+
+   ù Ari Laine
+
+   ù John Banbury
+
+
+
+UDO6
+****
+
+                   http://www.dirk-hagedorn.de/et/
+
+
+

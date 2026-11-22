@@ -1,0 +1,407 @@
+<html>
+<head>
+<title>
+HTTP module for CAB under STinG/STiK/Iconnect/MintNet CAB.OVL History
+</title>
+<meta name="Author" content="Olivier Booklage">
+</head>
+<body>
+<p align=center>
+<h2><p align=center>HTTP module for CAB under STinG/STiK/Iconnect/MintNet</h2>
+<h1><p align=center>CAB.OVL History</h1>
+<p align=center>
+Release V5.68<br>
+19. Januar 2000<br>
+<br>by<br>
+Olivier Booklage<br>
+</p>
+<hr>
+<hr>
+<h1><a name="V5.68">V5.68</a></h1>
+<p>Fixed : Very old bug, cab.ovl crash if a HTTP proxy was defined
+without semi-colon &quot;:&quot; followed by the port value.
+</p>
+<hr>
+<h1><a name="V5.67">V5.67</a></h1>
+<p>Fixed : FTP bug if no HTTP proxy.
+</p>
+<p>New : Speed increased.
+</p>
+<hr>
+<h1><a name="V5.66">V5.66</a></h1>
+<p>Fixed : HEAD method preserved for redirections ( autosurf ).
+</p>
+<hr>
+<h1><a name="V5.65">V5.65</a></h1>
+<p>Fixed : POST method redirected is now fixed in GET, some
+redirections and formulars run again.
+</p>
+<hr>
+<h1><a name="V5.64">V5.64</a></h1>
+<p>Fixed : <a href="#V5.63">V5.63</a> crash with CABDLOAD :( . Thank you to <a href="mailto:jhouplon@club-internet.fr">Joel Houplon</a>.
+<br>
+</p>
+<p>Fixed : For cache problem, errors are often &quot;Can not write
+the cache file&quot; for any reason . Thank you to <a href="mailto:jhouplon@club-internet.fr">Joel Houplon</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.63">V5.63</a></h1>
+<p>New : Subject in mailto URL can be transmitted by &quot;?&quot;
+behind address. EG: &quot;mailto:name@example.com?Test from cab.ovl
+documentation&quot;.
+<br>
+</p>
+<P>You can check if your browser version support by <FORM METHOD=POST ACTION="mailto:name@example.com?mailto test from cab.ovl documentation">
+<INPUT TYPE=HIDDEN name="test" value="support mailto"><H3><INPUT TYPE=SUBMIT value="Click"></H3></FORM>.</P>
+
+<p>New : mailto can be used under IConnect. Thank to <a href="mailto:juergen.koneczny@gmx.de">Juergen Koneczny</a>.
+<br>
+</p>
+<p>Neu : deutschesprachige RSC-Datei und Anleitung, Dank an <a href="mailto:hapla@gmx.de">Harald Placke</a>.
+<br>
+</p>
+<p>Fixed : Bug in case of root redirection as http://www.mysite/pub
+to http://www.mysite/pub/ because CAB refuse (right) to handle a new
+filename. Maybe solve M&amp;N Freeman's bug ?. Thank you to <a href="mailto:banbury@madhousenet.co.uk">John Banbury</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.62">V5.62</a></h1>
+<p>New : Authentification re-writted .
+<br>
+</p>
+<P>You can check if your browser version support by <FORM METHOD=GET ACTION="http://obooklage.free.fr/protect/">
+<INPUT TYPE=HIDDEN name="test" value="Support Authentification"><H3><INPUT TYPE=SUBMIT value="Try with Login:ob Password:12345"></H3></FORM>.</P>
+
+<p>New : No more alert for http header forgetted. Thank to <a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<p>New : Internal &quot;tried be&quot; non-blocking resolver.
+<br>
+</p>
+<p>New : Data speed in turbo mode under IConnect.
+<br>
+</p>
+<p>New : http and ftp proxies can be used under IConnect.
+<br>
+</p>
+<p>New : Stop button and Esc key can be used under IConnect. Thank to
+<a href="mailto:ari.laine@surffi.net">Ari Laine</a>.
+<br>
+</p>
+<p>Not Fixed: mailto can not be used under IConnect, but do not crash
+CAB. Thank to <a href="mailto:hapla@gmx.de">Harald Placke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.61">V5.61</a></h1>
+<p>Fixed : mailto was running only if ftp_proxy was set !!. Thank to
+<a href="mailto:jhouplon@club-internet.fr">Joel Houplon</a>.
+<br>
+</p>
+<p>Fixed : Bad user-agent. Thank to <a href="mailto:mjaap@atari-computer.de">Matthias Jaap</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.60">V5.60</a></h1>
+<p>Fixed : mailto: was running just one time :(
+<br>
+</p>
+<p>New : mailto: a report document is created.
+<br>
+</p>
+<hr>
+<h1><a name="V5.59">V5.59</a></h1>
+<p>New : support mailto: as link with
+application/x-www-form-urlencoded coding. Variables &quot;EMAIL=&quot;
+and &quot;SMTP_SERVER=&quot; are used under STiK.
+<br>
+</p>
+<hr>
+<h1><a name="V5.58">V5.58</a></h1>
+<p>New : HTTP header use &quot;Referer:&quot; field for <b>ALL</b>
+methods, thank to <a href="mailto:pricard@club-internet.fr">Pascal Ricard</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.57">V5.57</a></h1>
+<p>New : HTTP header use &quot;Referer:&quot; field for POST method,
+so some forms run (tested with my homepage).
+<br>
+</p>
+<p>NEU : deutschesprachige RSC-Datei und Anleitung, Dank an <a href="mailto:hapla@gmx.de">Harald Placke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.56">V5.56</a></h1>
+<p>Fixed : Memory crash in TCP buffer, thank to <a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<p>Fixed : Bug about cookie path, thank to <a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.55">V5.55</a></h1>
+<p>New : Turbo mode is directly implemented, so you do not need to
+set it in config.
+<br>
+</p>
+<p>New : In config <a href="http://cab.ovl">SETUP</a> a &quot;use CAB&quot; choice is added for let
+CAB to manage cookies.
+<br>
+</p>
+<p>Fixed : Bad bug about cookie transmission between CAB and OVL.
+<br>
+</p>
+<p>Fixed : No data comming indication for header in CAB info bar.
+<br>so &quot;receiving data xxxx/xxxx&quot; is only for real datas.
+This way increase net speed is case of redirection.
+</p>
+<hr>
+<h1><a name="V5.54">V5.54</a></h1>
+<p>Near Fixed: No more 0 bytes/sec during download.
+<br>
+</p>
+<p>New : The module check hotlist can be used for scanning changed
+documents.
+<br>
+</p>
+<p>New : In config <a href="http://cab.ovl">SETUP</a> a turbo mode is added. Increase data flow for
+medium documents.
+<br>
+</p>
+<hr>
+<h1><a name="V5.53">V5.53</a></h1>
+<p>Fixed : CAB.OVL crash if STinG is inactive. Thank to <a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.52">V5.52</a></h1>
+<p>Fixed : Bad bug about cache, was erased in case of connect fail.
+<br>
+</p>
+<p>New : Iconnect compatible.
+<br>
+</p>
+<hr>
+<h1><a name="V5.50-51">V5.50-51</a></h1>
+<p>New : Speed about read datas optimized, you must (?) have a
+download speed fastest as old versions.
+<br>
+</p>
+<p>New : Some very bad servers do not send HTTP &quot;legal&quot;
+header.In this case an alert is displayed, raw data loaded but you
+must contact the administrator for this protocol default.
+<br>
+</p>
+<p>New : Limited alerts, so 'use form alert' is no more supported.
+<br>
+</p>
+<p>New : In case of SERVER ERROR ( not cab.ovl ), a HTML document
+with original server's text is created and show, so 'debug button' is
+no more supported.
+<br>
+</p>
+<p>Fixed : Bad bug about authentification: server with
+WWW-Authenticate header line, and without proxy. Thank you to <a href="mailto:jhouplon@club-internet.fr">Joel Houplon</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.4">V5.4</a></h1>
+<p>New : Setup allow to be OFFLINE if you request a permanent
+network. Is this case a alert is show, and read cab cache is forced.
+Thank to Derryck Croker.
+<br>
+</p>
+<hr>
+<h1><a name="V5.3">V5.3</a></h1>
+<p>New : Including '/internal-gopher' images for CAB version 2.51 and
+above.
+<br>
+</p>
+
+<CENTER>
+as
+<TABLE CELLPADING=0 CELLSPACING=0>
+<TR>
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-back" ALT="[image back]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-menu" ALT="[image menu]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-binary" ALT="[image binary]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-image" ALT="[image picture]">
+<TD bgcolor="#FFFFFF" align=center nowrap
+><IMG SRC="http://www.anyserver.com/internal-gopher-index" ALT="[image index]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-movie" ALT="[image movie]">
+<TD bgcolor="#FFFFFF" align=center nowrap
+><IMG SRC="http://www.anyserver.com/internal-gopher-sound" ALT="[image sound]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-text" ALT="[image text]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-unknown" ALT="[image unknown]">
+</TR>
+</TABLE>
+</CENTER>
+
+
+<p>New : Setup allow to be OFFLINE if you request a permanent
+network. Is this case a alert is show, and read cab cache is forced.
+Thank to Derryck Croker.
+<br>
+</p>
+<p>New : Including '/internal-gopher' images for CAB version 2.51 and
+above.
+<br>
+</p>
+<hr>
+<h1><a name="V5.2">V5.2</a></h1>
+<p>Fixed : Very bad bug with redirection after a POST method, so many
+formulars works now. Thank you to <a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.1">V5.1</a></h1>
+<p>Fixed : Bug for logfile ( not closed )
+<br>
+</p>
+<p>Fixed : Bug for logfile, now one per cession.
+<br>
+</p>
+<hr>
+<h1><a name="V5.0">V5.0</a></h1>
+<p>Fixed : Bug about if-modified, fixed now ? Ronald ??
+</p>
+<p>Fixed : In case of error or UserBreak, the incomplete file is
+removed for futurs reloads.
+</p>
+<hr>
+<h1><a name="V4.9">V4.9</a></h1>
+<p>Fixed : Bug about URL with space character ( prohibited ) is now
+coded ( &quot;%20&quot; ) so no more file not found or server error.
+<br>
+</p>
+<hr>
+<h1><a name="V4.8">V4.8</a></h1>
+<p>New : CAB.OVL do not send &quot;if-modified&quot; for date under
+1971 ! passed by CAB, so request complete file is forced.
+<br>
+</p>
+<p>Fixed : Some problems fixed with cookies and servers as <a href="http://www.multimania.com/">multimania</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V4.7">V4.7</a></h1>
+<p>New : CAB.OVL check CAB internal variable &quot;reload&quot;, so
+&quot;if-modified&quot; is not send to the server if this flag is set.
+<br>
+</p>
+<hr>
+<h1><a name="V4.6">V4.6</a></h1>
+<p>Fixed : Problem about file-not-modified ( cache ) Thank to <a href="mailto:dlanor@oden.se">Ronald Andersson</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V4.5">V4.5</a></h1>
+<p>New : &quot;Host : &quot; is set in header some some servers.
+Thank to <a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V4.4">V4.4</a></h1>
+<p>New : Refuse cookie in configuration page do not received OR SEND
+any cookie.
+<br>
+</p>
+<hr>
+<h1><a name="V4.3">V4.3</a></h1>
+<p>Maybe Fixed : Bug in some servers return 'bad request', thank you
+to <a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V4.2">V4.2</a></h1>
+<p>Fixed : Stupid bug for protected access ( Authentification ).
+<br>Fixed : E_RRESET is no more an error, used for STinG
+Server&lt;-&gt;Client due TCP_close() bug.
+<br>
+</p>
+<hr>
+<h1><a name="V3.9-4.1">V3.9-4.1</a></h1>
+<p>Fixed : bad error form if no data is comming.
+<br>Fixed : default button in alerts is no more supported.
+<br>Fixed : no alerts if configuration is set as.
+<br>
+</p>
+<hr>
+<h1><a name="V3.8">V3.8</a></h1>
+<p>New : decent dialog for cookie acceptation.
+<br>
+</p>
+<hr>
+<h1><a name="V3.7">V3.7</a></h1>
+<p>Fixed : very bad bug on some formulares, thank you to <a href="mailto:jhouplon@club-internet.fr">Joel Houplon</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V3.6">V3.6</a></h1>
+<p>New : ressource customization.
+<br>
+</p>
+<hr>
+<h1><a name="V3.5">V3.5</a></h1>
+<p>New : ressource modules/cab_ovl.rsc for futurs translations.
+<br>Fixed : some bugs about cookies.
+<br>
+</p>
+<hr>
+<h1><a name="V3.4">V3.4</a></h1>
+<p>New : Debug informations are on new CAB window.
+<br>
+</p>
+<hr>
+<h1><a name="V3.3">V3.3</a></h1>
+<p>Fixed : Urgent release, V3.2b destroy memory :(
+<br>
+</p>
+<hr>
+<h1><a name="V3.2">V3.2</a></h1>
+<p>New : Try to call ST-GUIDE after write the debug.txt file.
+<br>New : Window-dialog topped for CAB window topped.
+<br>Fixed : Debug option re-writed (bombs).
+<br>Fixed : Relative location allowed ( eg: &quot;Location:
+path/dummy/index.html&quot; )
+<br>
+</p>
+<hr>
+<h1><a name="V3.1">V3.1</a></h1>
+<p>New : Dialbox in windows by Jacques Delavoix.
+<br>New : Try to be RFC2109 compliant about cookie, but some servers
+are not :(
+<br>Fixed : Crash in debug mode for long cookie value.
+<br>
+</p>
+<hr>
+<h1><a name="V3.0">V3.0</a></h1>
+<p>New : Please, for version old 2.8 of fast cab.ovl, remove your
+module/cookie.set file.
+<br>Fixed : in case of HTTP error, you can really retry.
+<br>
+</p>
+<hr>
+<h1><a name="V2.9">V2.9</a></h1>
+<p>New : bell when dialbox.
+<br>Fixed : cab crash for HTTP unkown error number.
+<br>
+</p>
+<hr>
+<h1><a name="UDO6">UDO6</a></h1>
+<p align=center><a href="http://www.dirk-hagedorn.de/et/        ">http://www.dirk-hagedorn.de/et/</a>
+</p>
+</body>
+</html>
+
+

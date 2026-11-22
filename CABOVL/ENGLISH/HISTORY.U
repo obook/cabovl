@@ -1,0 +1,509 @@
+#
+#
+# File for UDO:
+#
+# UDO has been developed to make it easier for you to write software
+# manuals or other documentation that you need in more than one format.
+# Copyright ½ 1995, 1996 by Dirk Hagedorn,In der Esmecke 9, 59846 Sundern, Germany.
+# MausNet: Dirk Hagedorn@MK2 , America Online: DirkHage@aol.com
+# The current versions can be found at http://members.aol.com/DirkHage/www/eng/udo.htm
+#
+#
+
+# SVP ne changer la version qu'au moment de la fabrication de l'archive
+
+!define VERSION V5.68
+
+!title HTTP module for CAB under STinG/STiK/Iconnect/MintNet
+!program CAB.OVL History
+!version Release (!VERSION)
+!date    (!today)
+!author  Olivier Booklage
+#!street  4, cour des Longs PrŠs 92100 Boulogne FRANCE
+#!email Internet: name@example.com
+
+!stg @subject "Utility/InterNet"
+!stg @options "+g +i -s +zz -j2"
+
+#!subsubtoc             [asc]
+
+#Tells UDO to output short tables of contents. :
+#---------------------------------------------
+#!use_short_toc          [stg,html]
+
+#Automatiquement Lists all sections of a chapter ( place !subtoc ) :
+#------------------------------------------------------------------
+#!use_auto_subtocs       [asc,info,html,stg,tvh,win]
+
+#Rassemble les subsub d'un subnode : PB:supprime les icones aller-retour!
+#---------------------------------
+!html_merge_nodes
+!html_merge_subnodes
+!html_merge_subsubnodes
+
+#?????????????????????? mettre qq chose dans l'index ? pour HYP ?
+#----------------------
+!use_nodes_inside_index [stg,html]
+
+#Pas d'affichage des num‚ros de node,sub..etc :
+#--------------------------------------------
+!no_numbers             [html]
+
+#Pas d'icones d'aller-retour
+#---------------------------
+!no_headlines   [html]
+!no_bottomlines [html]
+
+#Macro
+######
+
+!macro STinG    (!xlink [STinG][http://www.rottengatter.de])
+!macro Maedicke (!xlink [Bernd Maedicke] [mailto:BMaedicke@t-online.de])
+!macro Andersson (!xlink [Ronald Andersson] [mailto:dlanor@oden.se])
+!macro Houplon (!xlink [Joel Houplon] [mailto:jhouplon@club-internet.fr])
+!macro Placke (!xlink [Harald Placke] [mailto:hapla@gmx.de])
+!macro Ricard (!xlink [Pascal Ricard] [mailto:pricard@club-internet.fr])
+!macro Jaap (!xlink [Matthias Jaap] [mailto:mjaap@atari-computer.de])
+!macro Laine (!xlink [Ari Laine] [mailto:ari.laine@surffi.net])
+!macro Koneczny (!xlink [Juergen Koneczny] [mailto:juergen.koneczny@gmx.de])
+!macro Banbury (!xlink [John Banbury] [mailto:banbury@madhousenet.co.uk])
+
+!english
+
+########################################
+
+!begin_document
+
+!maketitle
+
+########################################
+
+!node (!VERSION)
+
+Fixed    : Very old bug, cab.ovl crash if a HTTP proxy was defined without
+           semi-colon ":" followed by the port value.
+
+########################################
+
+!node V5.67
+
+Fixed    : FTP bug if no HTTP proxy.
+
+New      : Speed increased.
+
+########################################
+
+!node V5.66
+
+Fixed    : HEAD method preserved for redirections ( autosurf ).
+
+
+########################################
+
+!node V5.65
+
+Fixed    : POST method redirected is now fixed in GET, some redirections and formulars run again.
+
+
+########################################
+
+!node V5.64
+
+Fixed    : V5.63 crash with CABDLOAD :(  . Thank you to (!Houplon). (!nl)
+
+Fixed    : For cache problem, errors are often "Can not write the cache file"
+           for any reason . Thank you to (!Houplon). (!nl)
+
+########################################
+
+!node V5.63
+
+New      : Subject in mailto URL can be transmitted by "?" behind address. EG: "mailto:name@example.com?Test from cab.ovl documentation". (!nl)
+
+!ifdest [html]
+!begin_raw
+<P>You can check if your browser version support by <FORM METHOD=POST ACTION="mailto:name@example.com?mailto test from cab.ovl documentation">
+<INPUT TYPE=HIDDEN name="test" value="support mailto"><H3><INPUT TYPE=SUBMIT value="Click"></H3></FORM>.</P>
+!end_raw
+!endif
+
+New      : mailto can be used under IConnect. Thank to (!Koneczny). (!nl)
+
+Neu      : deutschesprachige RSC-Datei und Anleitung, Dank an (!Placke). (!nl)
+
+Fixed    : Bug in case of root redirection as http://www.mysite/pub to http://www.mysite/pub/
+because CAB refuse (right) to handle a new filename. Maybe solve M&N Freeman's bug ?. Thank you to (!Banbury). (!nl)
+
+
+########################################
+
+!node V5.62
+
+New      : Authentification re-writted . (!nl)
+
+!ifdest [html]
+!begin_raw
+<P>You can check if your browser version support by <FORM METHOD=GET ACTION="http://obooklage.free.fr/protect/">
+<INPUT TYPE=HIDDEN name="test" value="Support Authentification"><H3><INPUT TYPE=SUBMIT value="Try with Login:ob Password:12345"></H3></FORM>.</P>
+!end_raw
+!endif
+
+
+New      : No more alert for http header forgetted. Thank to (!Maedicke). (!nl)
+
+New      : Internal "tried be" non-blocking resolver. (!nl)
+
+New      : Data speed in turbo mode under IConnect. (!nl)
+
+New      : http and ftp proxies can be used under IConnect. (!nl)
+
+New      : Stop button and Esc key can be used under IConnect. Thank to (!Laine). (!nl)
+
+Not Fixed: mailto can not be used under IConnect, but do not crash CAB. Thank to (!Placke). (!nl)
+
+########################################
+
+!node V5.61
+
+Fixed    : mailto was running only if ftp_proxy was set !!. Thank to (!Houplon). (!nl)
+
+Fixed    : Bad user-agent. Thank to (!Jaap). (!nl)
+
+
+########################################
+
+!node V5.60
+
+Fixed    : mailto: was running just one time :( (!nl)
+
+New      : mailto: a report document is created. (!nl)
+
+
+########################################
+
+!node V5.59
+
+New      : support mailto: as link with application/x-www-form-urlencoded coding.
+           Variables "EMAIL=" and "SMTP_SERVER=" are used under STiK. (!nl)
+
+
+########################################
+
+!node V5.58
+
+New      : HTTP header use "Referer:" field for (!B)ALL(!b) methods, thank to (!Ricard). (!nl)
+
+########################################
+
+!node V5.57
+
+
+New      : HTTP header use "Referer:" field for POST method, so some
+           forms run (tested with my homepage). (!nl)
+
+NEU      :  deutschesprachige RSC-Datei und Anleitung, Dank an (!Placke). (!nl)
+
+
+########################################
+
+!node V5.56
+
+
+Fixed    :  Memory crash in TCP buffer, thank to (!Maedicke). (!nl)
+
+Fixed    :  Bug about cookie path, thank to (!Maedicke). (!nl)
+
+
+########################################
+
+!node V5.55
+
+
+New      :  Turbo mode is directly implemented, so you do not need
+            to set it in config. (!nl)
+
+New      :  In config (!xlink [SETUP][http://cab.ovl]) a "use CAB"
+            choice is added for let CAB to manage cookies. (!nl)
+
+Fixed    :  Bad bug about cookie transmission between CAB and OVL. (!nl)
+
+Fixed    :  No data comming indication for header in CAB info bar. (!nl)
+            so "receiving data xxxx/xxxx" is only for real datas.
+            This way increase net speed is case of redirection.
+
+########################################
+
+!node V5.54
+
+Near Fixed: No more 0 bytes/sec during download. (!nl)
+
+New       : The module check hotlist can be used for scanning
+            changed documents. (!nl)
+
+New       : In config (!xlink [SETUP][http://cab.ovl]) a turbo mode
+            is added. Increase data flow for medium documents. (!nl)
+
+########################################
+
+!node V5.53
+
+Fixed    : CAB.OVL crash if STinG is inactive. Thank to (!Maedicke). (!nl)
+
+
+########################################
+
+!node V5.52
+
+Fixed    : Bad bug about cache, was erased in case of connect fail. (!nl)
+
+New      : Iconnect compatible. (!nl)
+
+
+########################################
+
+!node V5.50-51
+
+New      : Speed about read datas optimized, you must (?) have a download
+           speed fastest as old versions. (!nl)
+
+New      : Some very bad servers do not send HTTP "legal" header.In this
+           case an alert is displayed, raw data loaded but you must contact
+           the administrator for this protocol default. (!nl)
+
+New      : Limited alerts, so 'use form alert' is no more supported. (!nl)
+
+New      : In case of SERVER ERROR ( not cab.ovl ), a HTML document with
+           original server's text is created and show, so 'debug button' is
+           no more supported. (!nl)
+
+Fixed    : Bad bug about authentification:
+           server with WWW-Authenticate header line, and without proxy.
+           Thank you to (!Houplon). (!nl)
+
+########################################
+
+!node V5.4
+
+New      : Setup allow to be OFFLINE if you request a permanent network.
+           Is this case a alert is show, and read cab cache is forced.
+           Thank to Derryck Croker. (!nl)
+
+########################################
+
+!node V5.3
+
+New      : Including '/internal-gopher' images for CAB version 2.51 and above. (!nl)
+!ifdest [html]
+!begin_raw
+
+<CENTER>
+as
+<TABLE CELLPADING=0 CELLSPACING=0>
+<TR>
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-back" ALT="[image back]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-menu" ALT="[image menu]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-binary" ALT="[image binary]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-image" ALT="[image picture]">
+<TD bgcolor="#FFFFFF" align=center nowrap
+><IMG SRC="http://www.anyserver.com/internal-gopher-index" ALT="[image index]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-movie" ALT="[image movie]">
+<TD bgcolor="#FFFFFF" align=center nowrap
+><IMG SRC="http://www.anyserver.com/internal-gopher-sound" ALT="[image sound]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-text" ALT="[image text]">
+<TD bgcolor="#FFFFFF" align=center nowrap>
+<IMG SRC="http://www.anyserver.com/internal-gopher-unknown" ALT="[image unknown]">
+</TR>
+</TABLE>
+</CENTER>
+
+!end_raw
+!endif
+
+New      : Setup allow to be OFFLINE if you request a permanent network. Is
+           this case a alert is show, and read cab cache is forced. Thank to
+           Derryck Croker. (!nl)
+
+New      : Including '/internal-gopher' images for CAB version 2.51
+           and above. (!nl)
+
+########################################
+
+!node V5.2
+
+Fixed    : Very bad bug with redirection after a POST method, so many
+           formulars works now. Thank you to (!Maedicke). (!nl)
+
+########################################
+
+!node V5.1
+
+Fixed    : Bug for logfile ( not closed ) (!nl)
+
+Fixed    : Bug for logfile, now one per cession. (!nl)
+
+
+########################################
+
+!node V5.0
+
+Fixed    : Bug about if-modified, fixed now ? Ronald ??
+
+Fixed    : In case of error or UserBreak, the incomplete file is removed
+           for futurs reloads.
+
+
+########################################
+
+!node V4.9
+
+Fixed    : Bug about URL with space character ( prohibited ) is now
+           coded ( "%20" ) so no more file not found or server error. (!nl)
+
+########################################
+
+!node V4.8
+
+New      : CAB.OVL do not send "if-modified" for date under 1971 ! passed by
+           CAB, so request complete file is forced. (!nl)
+
+Fixed    : Some problems fixed with cookies and servers as (!xlink[multimania] [http://www.multimania.com/]). (!nl)
+
+########################################
+
+!node V4.7
+
+New      : CAB.OVL check CAB internal variable "reload", so
+           "if-modified" is not send to the server if this flag is
+           set. (!nl)
+
+########################################
+
+!node V4.6
+
+Fixed    : Problem about file-not-modified ( cache )
+           Thank to (!Andersson). (!nl)
+
+
+########################################
+
+!node V4.5
+
+New      : "Host : " is set in header some some servers.
+           Thank to (!Maedicke). (!nl)
+
+########################################
+
+!node V4.4
+
+New      : Refuse cookie in configuration page do not received OR SEND
+           any cookie. (!nl)
+
+########################################
+
+!node V4.3
+
+Maybe Fixed : Bug in some servers return 'bad request', thank you
+                 to (!Maedicke). (!nl)
+
+########################################
+
+!node V4.2
+
+Fixed    : Stupid bug for protected access ( Authentification ). (!nl)
+Fixed    : E_RRESET is no more an error, used for STinG Server<->Client
+           due TCP_close() bug. (!nl)
+
+########################################
+
+!node V3.9-4.1
+
+Fixed    : bad error form if no data is comming. (!nl)
+Fixed    : default button in alerts is no more supported. (!nl)
+Fixed    : no alerts if configuration is set as. (!nl)
+
+
+########################################
+
+!node V3.8
+
+New      : decent dialog for cookie acceptation. (!nl)
+
+
+########################################
+
+!node V3.7
+
+Fixed    : very bad bug on some formulares, thank you to (!Houplon). (!nl)
+
+
+########################################
+
+!node V3.6
+
+New      : ressource customization. (!nl)
+
+
+########################################
+
+!node V3.5
+
+New      : ressource modules/cab_ovl.rsc for futurs translations. (!nl)
+Fixed    : some bugs about cookies. (!nl)
+
+
+########################################
+
+!node V3.4
+
+New      : Debug informations are on new CAB window. (!nl)
+
+########################################
+
+!node V3.3
+
+Fixed    : Urgent release, V3.2b destroy memory :( (!nl)
+
+########################################
+
+!node V3.2
+
+New      : Try to call ST-GUIDE after write the debug.txt file. (!nl)
+New      : Window-dialog topped for CAB window topped. (!nl)
+Fixed    : Debug option re-writed (bombs). (!nl)
+Fixed    : Relative location allowed ( eg: "Location: path/dummy/index.html" ) (!nl)
+
+########################################
+
+!node V3.1
+
+New      : Dialbox in windows by Jacques Delavoix. (!nl)
+New      : Try to be RFC2109 compliant about cookie,
+           but some servers are not :( (!nl)
+Fixed    : Crash in debug mode for long cookie value. (!nl)
+
+########################################
+
+
+!node V3.0
+
+New      : Please, for version old 2.8 of fast cab.ovl,
+           remove your module/cookie.set file. (!nl)
+Fixed    : in case of HTTP error, you can really retry. (!nl)
+
+########################################
+
+
+!node V2.9
+
+New      : bell when dialbox. (!nl)
+Fixed    : cab crash for HTTP unkown error number. (!nl)
+
+!end_document
+
+########################################

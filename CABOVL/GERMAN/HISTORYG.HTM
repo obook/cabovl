@@ -1,0 +1,181 @@
+<html>
+<head>
+<title>
+HTTP-Modul f&uuml;r CAB unter STinG/STiK/Iconnect/MintNet CAB.OVL History
+</title>
+<meta name="Author" content="Olivier Booklage">
+</head>
+<body>
+<p align=center>
+<h2><p align=center>HTTP-Modul f&uuml;r CAB unter STinG/STiK/Iconnect/MintNet</h2>
+<h1><p align=center>CAB.OVL History</h1>
+<p align=center>
+Release V5.68<br>
+19. Januar 2000<br>
+<br>von<br>
+Olivier Booklage<br>
+</p>
+<hr>
+<hr>
+<h1><a name="V5.68">V5.68</a></h1>
+<p>Fixed : Very old bug, cab.ovl crash if a HTTP proxy was defined
+without semi-colon &quot;:&quot; followed by the port value.
+</p>
+<hr>
+<h1><a name="V5.57">V5.57</a></h1>
+<p>Fixed : FTP bug if no HTTP proxy.
+</p>
+<p>New : Speed increased.
+</p>
+<hr>
+<h1><a name="V5.66">V5.66</a></h1>
+<p>Fixed : HEAD method preserved for redirections ( autosurf ).
+</p>
+<hr>
+<h1><a name="V5.65">V5.65</a></h1>
+<p>Fixed : POST method redirected is now fixed in GET, some
+redirections and formulars run again.
+</p>
+<hr>
+<h1><a name="V5.64">V5.64</a></h1>
+<p>Fixed : <a href="#V5.63">V5.63</a> crash with CABDLOAD :( . Thank you to <a href="mailto:jhouplon@club-internet.fr">Joel Houplon</a>.
+<br>
+</p>
+<p>Fixed : For cache problem, errors are often &quot;Can not write
+the cache file&quot; for any reason . Thank you to <a href="mailto:jhouplon@club-internet.fr">Joel Houplon</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.63">V5.63</a></h1>
+<p>New : Subject in mailto URL can be transmitted by &quot;?&quot;
+behind address. EG: &quot;mailto:name@example.com?Test from cab.ovl
+documentation&quot;.
+<br>
+</p>
+<P>You can check if your browser version support by <FORM METHOD=POST ACTION="mailto:name@example.com?mailto test from cab.ovl documentation">
+<INPUT TYPE=HIDDEN name="test" value="support mailto"><H3><INPUT TYPE=SUBMIT value="Click"></H3></FORM>.</P>
+
+<p>New : mailto can be used under IConnect. Thank to (!Koneczny).
+<br>
+</p>
+<p>Neu : deutschesprachige RSC-Datei und Anleitung, Dank an <a href="mailto:hapla@gmx.de">Harald Placke</a>.
+<br>
+</p>
+<p>Fixed : Bug in case of root redirection as http://www.mysite/pub
+to http://www.mysite/pub/ because CAB refuse (right) to handle a new
+filename. Maybe solve M&amp;N Freeman's bug ?. Thank you to <a href="mailto:banbury@madhousenet.co.uk">John Banbury</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.62">V5.62</a></h1>
+<p>Neu : Autorisierung neu programmiert.
+<br>
+</p>
+<p>Neu : Kein Alert mehr f&uuml;r vergessenen HTTP-Header. Dank an
+<a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<p>Neu : Interner &quot;Versuch&quot; eines nicht blockierenden
+Resolvers.
+<br>
+</p>
+<p>Neu : Datengeschwindigkeit im Turbo-Modus unter IConnect.
+<br>
+</p>
+<p>Neu : HTTP- und FTP-Proxies k&ouml;nnen unter IConnect benutzt
+werden.
+<br>
+</p>
+<p>Neu : Stop-Icon und Esc-Taste k&ouml;nnen unter IConnect benutzt
+werden. Dank an <a href="mailto:ari.laine@surffi.net">Ari Laine</a>.
+<br>
+</p>
+<p>Bug : mailto kann unter IConnect nicht benutzt werden, aber
+l&auml;&szlig;t CAB nicht abst&uuml;rzen. Dank an <a href="mailto:hapla@gmx.de">Harald Placke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.61">V5.61</a></h1>
+<p>Fix : mailto funktionierte nur, wenn ftp_proxy konfiguriert war!!
+Dank an <a href="mailto:jhouplon@club-internet.fr">Joel Houplon</a>.
+<br>
+</p>
+<p>Fix : Bad user-agent. Dank an <a href="mailto:mjaap@atari-computer.de">Matthias Jaap</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.60">V5.60</a></h1>
+<p>Fix : mailto: funktionierte immer nur gerade ein mal :(
+<br>
+</p>
+<p>New : mailto: ein Report-Dokument wird erstellt.
+<br>
+</p>
+<hr>
+<h1><a name="V5.59">V5.59</a></h1>
+<p>Neu : Unterst&uuml;tzung von mailto: als Link mit
+application/x-www-form-urlencoded Kodierung.
+<br>
+</p>
+<P>Hier kann getestet werden, ob die Browser-Version dieses unterstÅtzt <FORM METHOD=POST ACTION="mailto:name@example.com">
+<INPUT TYPE=HIDDEN name="test" value="support mailto"><H3><INPUT TYPE=SUBMIT value="Click"></H3></FORM>.</P>
+
+<p>Daf&uuml;r m&uuml;ssen unter STinG in der DEFAULT.CFG die
+Variablen EMAIL und SMTP_SERVER definiert sein.
+<br>
+</p>
+<hr>
+<h1><a name="V5.58">V5.58</a></h1>
+<p>Neu : HTTP-Header benutzt &quot;Referer:&quot; Feld f&uuml;r
+<b>ALLE</b> Methoden, Dank an <a href="mailto:pricard@club-internet.fr">Pascal Ricard</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.57">V5.57</a></h1>
+<p>Neu : HTTP-Header benutzt &quot;Referer:&quot; Feld f&uuml;r POST
+Methode, dadurch funktionieren einige Formulare (Getestet mit meiner
+Homepage).
+<br>
+</p>
+<p>Neu : deutschesprachige RSC-Datei und Anleitung, Dank an <a href="mailto:hapla@gmx.de">Harald Placke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.56">V5.56</a></h1>
+<p>FIX : Speicherfehler im TCP-Puffer, Dank an <a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<p>FIX : Fehler beim Cookie-Pfad, Dank an <a href="mailto:BMaedicke@t-online.de">Bernd Maedicke</a>.
+<br>
+</p>
+<hr>
+<h1><a name="V5.55">V5.55</a></h1>
+<p>Neu : Turbo-Modus ist direkt eingebaut, eine Konfiguration
+entf&auml;llt
+<br>
+</p>
+<p>Neu : In der Konfiguration <a href="http://cab.ovl">SETUP</a> ist ein Schalter &quot;Verwaltung
+durch CAB&quot; hinzugekommen, der CAB veranla&szlig;t die Cookies
+selbst zu verwalten.
+<br>
+</p>
+<p>Fix : Schwerer Fehler in der Cookiebehandlung zwischen CAB und
+OVL.
+<br>
+</p>
+<p>Fix : Keine Anzeige &uuml;ber eintreffende Daten in der CAB
+Infozeile.
+<br>&quot;receiving data xxxx/xxxx&quot; ist nur f&uuml;r reale Daten.
+Dies erh&ouml;ht die Net-Geschwindigkeit im Fall einer Umlenkung.
+</p>
+<p>Angaben zu &auml;lteren Versionen sind dem englischen Text zu
+entnehmen.
+</p>
+<hr>
+<h1><a name="UDO6">UDO6</a></h1>
+<p align=center><a href="http://www.dirk-hagedorn.de/et/       ">http://www.dirk-hagedorn.de/et/</a>
+</p>
+</body>
+</html>
+
+

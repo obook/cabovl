@@ -1,0 +1,197 @@
+#
+#
+# File for UDO:
+#
+# UDO has been developed to make it easier for you to write software
+# manuals or other documentation that you need in more than one format.
+# Copyright Ω 1995, 1996 by Dirk Hagedorn,In der Esmecke 9, 59846 Sundern, Germany.
+# MausNet: Dirk Hagedorn@MK2 , America Online: DirkHage@aol.com
+# The current versions can be found at http://members.aol.com/DirkHage/www/eng/udo.htm
+#
+#
+
+# SVP ne changer la version qu'au moment de la fabrication de l'archive
+
+#!define VERSION V5.61
+
+!title HTTP module for CAB under STinG/STiK/Iconnect/MintNet
+!program CAB.OVL
+#!version Release (!VERSION)
+#!date    (!today)
+!author  Olivier Booklage
+#!street  4, cour des Longs Präs 92100 Boulogne FRANCE
+#!email Internet: name@example.com
+
+!stg @subject "Utility/InterNet"
+!stg @options "+g +i -s +zz -j2"
+
+#!subsubtoc             [asc]
+
+#Tells UDO to output short tables of contents. :
+#---------------------------------------------
+#!use_short_toc          [stg,html]
+
+#Automatiquement Lists all sections of a chapter ( place !subtoc ) :
+#------------------------------------------------------------------
+#!use_auto_subtocs       [asc,info,html,stg,tvh,win]
+
+#Rassemble les subsub d'un subnode : PB:supprime les icones aller-retour!
+#---------------------------------
+!html_merge_nodes
+!html_merge_subnodes
+!html_merge_subsubnodes
+
+#?????????????????????? mettre qq chose dans l'index ? pour HYP ?
+#----------------------
+!use_nodes_inside_index [stg,html]
+
+#Pas d'affichage des numÇros de node,sub..etc :
+#--------------------------------------------
+!no_numbers             [html]
+
+#Pas d'icones d'aller-retour
+#---------------------------
+!no_headlines 	[html]
+!no_bottomlines	[html]
+
+#Macro
+######
+
+!macro STinG  	(!xlink [STinG][http://www.rottengatter.de])
+!macro Maedicke (!xlink [Bernd Maedicke] [mailto:BMaedicke@t-online.de])
+!macro Andersson (!xlink [Ronald Andersson] [mailto:dlanor@oden.se])
+!macro Houplon (!xlink [Joel Houplon] [mailto:jhouplon@club-internet.fr])
+!macro Placke (!xlink [Harald Placke] [mailto:hapla@gmx.de])
+!macro Ricard (!xlink [Pascal Ricard] [mailto:pricard@club-internet.fr])
+!macro Jaap (!xlink [Matthias Jaap] [mailto:mjaap@atari-computer.de])
+!macro Laine (!xlink [Ari Laine] [mailto:ari.laine@surffi.net])
+!macro Koneczny (!xlink [Juergen Koneczny] [mailto:juergen.koneczny@gmx.de])
+!macro Banbury (!xlink [John Banbury] [mailto:banbury@madhousenet.co.uk])
+
+
+!english
+
+########################################
+
+!begin_document
+!maketitle
+!tableofcontents
+
+########################################
+
+!node About
+
+ CAB.OVL is a module for Cristal Atari Brownser 'CAB' for HTTP protocole
+ under TCP/IP stack (!STinG), STiK, IConnect or MintNet with GlueStik.
+ 
+ Support server Authentification and cookie under CAB < 2.7 to.
+
+
+ For STiK users, STIK.ACC contains essential TCP/IP routines apart
+ from the in-built dialer, so it must stay present. 
+
+!begin_center
+
+** This is a BETA VERSION for beta testers only. **
+
+!end_center
+
+########################################
+
+!node Installation
+
+Save your old cab.ovl and put this one in your CAB/MODULES/ folder
+with is CAB_OVL.RSC file.
+
+
+########################################
+
+!node Configuration
+
+!ifdest [html]
+Please click on (!xlink [SETUP][http://cab.ovl]) for set CABOVL configuration.
+!else
+Please ask for http://cab.ovl in CAB for set CABOVL configuration.
+!endif
+
+########################################
+
+!node Avertissement
+
+ Although every effort has been taken by the author to ensure trouble free
+ operation, i can take no responsibility for any damage caused by use of
+ this program, either directly or indirectly.
+ This software is used at your own risk.
+
+
+Enjoy it
+
+########################################
+
+!node Bugs
+
+!begin_itemize
+
+!item CAB 2.5X can not send request for URL > 81 characters, some formulars
+can not be sended propely with this version.
+
+
+!item In some servers with cookies, an error return 'bad request',
+so you can refuse cookie by configuring until this
+problem is persistant.
+
+!item Many errors come from NetWork, servers or CAB versions so before
+email me ( see Author ), (!B) BE SURE THAT MALFUNCTION IS CAB.OVL FAULT (!b) by testing with
+other plateforms and other CAB.OVL. Send my Logfile, CAB.APP and CAB.OVL
+versions.
+
+!end_itemize
+
+########################################
+
+!node History
+
+(!xlink [See History document] [history.htm])
+
+
+########################################
+
+!node Author
+
+!html <CENTER>
+
+!begin_table [|c|]
+Olivier Booklage
+4, cours des longs präs
+92100 Boulogne Billancourt
+France.
+
+www   : (!xlink [http://obooklage.free.fr/] [http://obooklage.free.fr/])
+!end_table
+
+!html </CENTER>
+
+########################################
+
+!node Beta-Testers
+
+
+!begin_itemize
+!item (!Andersson)
+!item (!xlink [Jan Daldrup] [mailto:daldrup@uni-duesseldorf.de])
+!item (!Maedicke)
+!item (!xlink [the beazt] [mailto:beazty@nightshift.demon.nl])
+!item (!xlink [Pat Morales] [mailto:pmorales@vines.littondsd.com])
+!item (!xlink [Derryck Croker] [mailto:derryck@cix.compulink.co.uk])
+!item (!Houplon)
+!item (!Placke)
+!item (!Ricard)
+!item (!Jaap)
+!item (!Laine)
+!item (!Koneczny)
+!item (!Banbury)
+!end_itemize
+
+!end_document
+
+########################################

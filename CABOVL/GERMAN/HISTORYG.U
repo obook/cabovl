@@ -1,0 +1,235 @@
+#
+#
+# File for UDO:
+#
+# UDO has been developed to make it easier for you to write software
+# manuals or other documentation that you need in more than one format.
+# Copyright Ω 1995, 1996 by Dirk Hagedorn,In der Esmecke 9, 59846 Sundern, Germany.
+# MausNet: Dirk Hagedorn@MK2 , America Online: DirkHage@aol.com
+# The current versions can be found at http://members.aol.com/DirkHage/www/eng/udo.htm
+#
+#
+
+# SVP ne changer la version qu'au moment de la fabrication de l'archive
+
+!define VERSION V5.68
+
+!title HTTP-Modul fÅr CAB unter STinG/STiK/Iconnect/MintNet
+!program CAB.OVL History
+!version Release (!VERSION)
+!date    (!today)
+!author  Olivier Booklage
+#!street  4, cour des Longs Präs 92100 Boulogne FRANCE
+#!email Internet: name@example.com
+
+!stg @subject "Utility/InterNet"
+!stg @options "+g +i -s +zz -j2"
+
+#!subsubtoc             [asc]
+
+#Tells UDO to output short tables of contents. :
+#---------------------------------------------
+#!use_short_toc          [stg,html]
+
+#Automatiquement Lists all sections of a chapter ( place !subtoc ) :
+#------------------------------------------------------------------
+#!use_auto_subtocs       [asc,info,html,stg,tvh,win]
+
+#Rassemble les subsub d'un subnode : PB:supprime les icones aller-retour!
+#---------------------------------
+!html_merge_nodes
+!html_merge_subnodes
+!html_merge_subsubnodes
+
+#?????????????????????? mettre qq chose dans l'index ? pour HYP ?
+#----------------------
+!use_nodes_inside_index [stg,html]
+
+#Pas d'affichage des numÇros de node,sub..etc :
+#--------------------------------------------
+!no_numbers             [html]
+
+#Pas d'icones d'aller-retour
+#---------------------------
+!no_headlines   [html]
+!no_bottomlines [html]
+
+#Macro
+######
+
+!macro STinG    (!xlink [STinG][http://www.rottengatter.de])
+!macro Maedicke (!xlink [Bernd Maedicke] [mailto:BMaedicke@t-online.de])
+!macro Andersson (!xlink [Ronald Andersson] [mailto:dlanor@oden.se])
+!macro Houplon (!xlink [Joel Houplon] [mailto:jhouplon@club-internet.fr])
+!macro Placke (!xlink [Harald Placke] [mailto:hapla@gmx.de])
+!macro Ricard (!xlink [Pascal Ricard] [mailto:pricard@club-internet.fr])
+!macro Jaap (!xlink [Matthias Jaap] [mailto:mjaap@atari-computer.de])
+!macro Laine (!xlink [Ari Laine] [mailto:ari.laine@surffi.net])
+!macro Banbury (!xlink [John Banbury] [mailto:banbury@madhousenet.co.uk])
+
+!german
+
+########################################
+
+!begin_document
+
+!maketitle
+
+########################################
+
+!node (!VERSION)
+
+Fixed    : Very old bug, cab.ovl crash if a HTTP proxy was defined without
+           semi-colon ":" followed by the port value.
+
+########################################
+
+!node V5.57
+
+Fixed    : FTP bug if no HTTP proxy.
+
+New      : Speed increased.
+
+########################################
+
+!node V5.66
+
+Fixed    : HEAD method preserved for redirections ( autosurf ).
+
+
+########################################
+
+!node V5.65
+
+Fixed    : POST method redirected is now fixed in GET, some redirections and formulars run again.
+
+########################################
+
+!node V5.64
+
+Fixed    : V5.63 crash with CABDLOAD :(  . Thank you to (!Houplon). (!nl)
+
+Fixed    : For cache problem, errors are often "Can not write the cache file"
+           for any reason . Thank you to (!Houplon). (!nl)
+
+########################################
+
+!node V5.63
+
+New      : Subject in mailto URL can be transmitted by "?" behind address. EG: "mailto:name@example.com?Test from cab.ovl documentation". (!nl)
+
+!ifdest [html]
+!begin_raw
+<P>You can check if your browser version support by <FORM METHOD=POST ACTION="mailto:name@example.com?mailto test from cab.ovl documentation">
+<INPUT TYPE=HIDDEN name="test" value="support mailto"><H3><INPUT TYPE=SUBMIT value="Click"></H3></FORM>.</P>
+!end_raw
+!endif
+
+New      : mailto can be used under IConnect. Thank to (!Koneczny). (!nl)
+
+Neu      : deutschesprachige RSC-Datei und Anleitung, Dank an (!Placke). (!nl)
+
+Fixed    : Bug in case of root redirection as http://www.mysite/pub to http://www.mysite/pub/
+because CAB refuse (right) to handle a new filename. Maybe solve M&N Freeman's bug ?. Thank you to (!Banbury). (!nl)
+
+########################################
+
+!node V5.62
+
+Neu      : Autorisierung neu programmiert. (!nl)
+
+Neu      : Kein Alert mehr fÅr vergessenen HTTP-Header. Dank an (!Maedicke). (!nl)
+
+Neu      : Interner "Versuch" eines nicht blockierenden Resolvers. (!nl)
+
+Neu      : Datengeschwindigkeit im Turbo-Modus unter IConnect. (!nl)
+
+Neu      : HTTP- und FTP-Proxies kînnen unter IConnect benutzt werden. (!nl)
+
+Neu      : Stop-Icon und Esc-Taste kînnen unter IConnect benutzt werden. Dank an (!Laine). (!nl)
+
+Bug      : mailto kann unter IConnect nicht benutzt werden, aber lÑût CAB nicht abstÅrzen. Dank an (!Placke). (!nl)
+
+########################################
+
+!node V5.61
+
+Fix      : mailto funktionierte nur, wenn ftp_proxy konfiguriert war!! Dank an (!Houplon). (!nl)
+
+Fix      : Bad user-agent. Dank an (!Jaap). (!nl)
+
+
+########################################
+
+!node V5.60
+
+Fix      : mailto: funktionierte immer nur gerade ein mal :( (!nl)
+
+New      : mailto: ein Report-Dokument wird erstellt. (!nl)
+
+
+########################################
+
+!node V5.59
+
+Neu      : UnterstÅtzung von mailto: als Link mit application/x-www-form-urlencoded Kodierung. (!nl)
+
+!ifdest [html]
+!begin_raw
+<P>Hier kann getestet werden, ob die Browser-Version dieses unterstÅtzt <FORM METHOD=POST ACTION="mailto:name@example.com">
+<INPUT TYPE=HIDDEN name="test" value="support mailto"><H3><INPUT TYPE=SUBMIT value="Click"></H3></FORM>.</P>
+!end_raw
+!endif
+
+DafÅr mÅssen unter STinG in der DEFAULT.CFG die Variablen EMAIL und SMTP_SERVER definiert sein. (!nl)
+
+########################################
+
+!node V5.58
+
+Neu      : HTTP-Header benutzt "Referer:" Feld fÅr (!B)ALLE(!b) Methoden, Dank an (!Ricard). (!nl)
+
+########################################
+
+!node V5.57
+
+
+Neu      : HTTP-Header benutzt "Referer:" Feld fÅr POST Methode, dadurch 
+           funktionieren einige Formulare (Getestet mit meiner Homepage). (!nl)
+
+Neu      : deutschesprachige RSC-Datei und Anleitung, Dank an (!Placke). (!nl)
+
+
+########################################
+
+!node V5.56
+
+
+FIX      :  Speicherfehler im TCP-Puffer, Dank an (!Maedicke). (!nl)
+
+FIX      :  Fehler beim Cookie-Pfad, Dank an (!Maedicke). (!nl)
+
+
+########################################
+
+!node V5.55
+
+
+Neu      :  Turbo-Modus ist direkt eingebaut, eine Konfiguration entfÑllt (!nl)
+
+Neu      :  In der Konfiguration (!xlink [SETUP][http://cab.ovl]) ist ein Schalter
+            "Verwaltung durch CAB" hinzugekommen, der CAB veranlaût die Cookies
+            selbst zu verwalten. (!nl)
+
+Fix      :  Schwerer Fehler in der Cookiebehandlung zwischen CAB und OVL. (!nl)
+
+Fix      :  Keine Anzeige Åber eintreffende Daten in der CAB Infozeile. (!nl)
+            "receiving data xxxx/xxxx" ist nur fÅr reale Daten.
+            Dies erhîht die Net-Geschwindigkeit im Fall einer Umlenkung.
+
+
+Angaben zu Ñlteren Versionen sind dem englischen Text zu entnehmen.
+
+!end_document
+
+########################################

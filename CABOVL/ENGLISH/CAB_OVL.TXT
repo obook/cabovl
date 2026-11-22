@@ -1,0 +1,149 @@
+        HTTP module for CAB under STinG/STiK/Iconnect/MintNet
+
+                               CAB.OVL
+
+
+                                  by
+
+                           Olivier Booklage
+
+
+Contents
+========
+
+ 1  About
+
+ 2  Installation
+
+ 3  Configuration
+
+ 4  Avertissement
+
+ 5  Bugs
+
+ 6  History
+
+ 7  Author
+
+ 8  Beta-Testers
+
+
+
+1  About
+********
+
+CAB.OVL is a module for Cristal Atari Brownser 'CAB' for HTTP
+protocole under TCP/IP stack STinG, STiK, IConnect or MintNet with
+GlueStik.
+
+Support server Authentification and cookie under CAB < 2.7 to.
+
+For STiK users, STIK.ACC contains essential TCP/IP routines apart from
+the in-built dialer, so it must stay present.
+
+         ** This is a BETA VERSION for beta testers only. **
+
+
+
+2  Installation
+***************
+
+Save your old cab.ovl and put this one in your CAB/MODULES/ folder
+with is CAB_OVL.RSC file.
+
+
+
+3  Configuration
+****************
+
+Please ask for http://cab.ovl in CAB for set CABOVL configuration.
+
+
+
+4  Avertissement
+****************
+
+Although every effort has been taken by the author to ensure trouble
+free operation, i can take no responsibility for any damage caused by
+use of this program, either directly or indirectly. This software is
+used at your own risk.
+
+Enjoy it
+
+
+
+5  Bugs
+*******
+
+   ù CAB 2.5X can not send request for URL > 81 characters, some
+     formulars can not be sended propely with this version.
+
+   ù In some servers with cookies, an error return 'bad request', so
+     you can refuse cookie by configuring until this problem is
+     persistant.
+
+   ù Many errors come from NetWork, servers or CAB versions so before
+     email me ( see Author ), * BE SURE THAT MALFUNCTION IS CAB.OVL
+     FAULT * by testing with other plateforms and other CAB.OVL. Send
+     my Logfile, CAB.APP and CAB.OVL versions.
+
+
+
+6  History
+**********
+
+See History document
+
+
+
+7  Author
+*********
+
+
+                |         Olivier Booklage          |
+                |      4, cours des longs prŠs      |
+                |    92100 Boulogne Billancourt     |
+                |              France.              |
+                |                                   |
+                | www   : http://obooklage.free.fr/ |
+
+
+
+8  Beta-Testers
+***************
+
+   ù Ronald Andersson
+
+   ù Jan Daldrup
+
+   ù Bernd Maedicke
+
+   ù the beazt
+
+   ù Pat Morales
+
+   ù Derryck Croker
+
+   ù Joel Houplon
+
+   ù Harald Placke
+
+   ù Pascal Ricard
+
+   ù Matthias Jaap
+
+   ù Ari Laine
+
+   ù Juergen Koneczny
+
+   ù John Banbury
+
+
+
+UDO6
+****
+
+                   http://www.dirk-hagedorn.de/et/
+
+
+

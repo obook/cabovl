@@ -1,0 +1,178 @@
+         HTTP-Modul fÅr CAB unter STinG/STiK/Iconnect/MintNet
+
+                           CAB.OVL History
+
+                            Release V5.68
+                           19. Januar 2000
+
+                                 von
+
+                           Olivier Booklage
+
+
+
+
+1  V5.68
+********
+
+Fixed : Very old bug, cab.ovl crash if a HTTP proxy was defined
+without semi-colon ":" followed by the port value.
+
+
+
+2  V5.57
+********
+
+Fixed : FTP bug if no HTTP proxy.
+
+New : Speed increased.
+
+
+
+3  V5.66
+********
+
+Fixed : HEAD method preserved for redirections ( autosurf ).
+
+
+
+4  V5.65
+********
+
+Fixed : POST method redirected is now fixed in GET, some redirections
+and formulars run again.
+
+
+
+5  V5.64
+********
+
+Fixed : V5.63 crash with CABDLOAD :( . Thank you to Joel Houplon.
+
+Fixed : For cache problem, errors are often "Can not write the cache
+file" for any reason . Thank you to Joel Houplon.
+
+
+
+6  V5.63
+********
+
+New : Subject in mailto URL can be transmitted by "?" behind address.
+EG: "mailto:name@example.com?Test from cab.ovl documentation".
+
+New : mailto can be used under IConnect. Thank to (!Koneczny).
+
+Neu : deutschesprachige RSC-Datei und Anleitung, Dank an Harald
+Placke.
+
+Fixed : Bug in case of root redirection as http://www.mysite/pub to
+http://www.mysite/pub/ because CAB refuse (right) to handle a new
+filename. Maybe solve M&N Freeman's bug ?. Thank you to John Banbury.
+
+
+
+7  V5.62
+********
+
+Neu : Autorisierung neu programmiert.
+
+Neu : Kein Alert mehr fÅr vergessenen HTTP-Header. Dank an Bernd
+Maedicke.
+
+Neu : Interner "Versuch" eines nicht blockierenden Resolvers.
+
+Neu : Datengeschwindigkeit im Turbo-Modus unter IConnect.
+
+Neu : HTTP- und FTP-Proxies kînnen unter IConnect benutzt werden.
+
+Neu : Stop-Icon und Esc-Taste kînnen unter IConnect benutzt werden.
+Dank an Ari Laine.
+
+Bug : mailto kann unter IConnect nicht benutzt werden, aber lÑût CAB
+nicht abstÅrzen. Dank an Harald Placke.
+
+
+
+8  V5.61
+********
+
+Fix : mailto funktionierte nur, wenn ftp_proxy konfiguriert war!! Dank
+an Joel Houplon.
+
+Fix : Bad user-agent. Dank an Matthias Jaap.
+
+
+
+9  V5.60
+********
+
+Fix : mailto: funktionierte immer nur gerade ein mal :(
+
+New : mailto: ein Report-Dokument wird erstellt.
+
+
+
+10  V5.59
+*********
+
+Neu : UnterstÅtzung von mailto: als Link mit application/x-www-form-
+urlencoded Kodierung.
+
+DafÅr mÅssen unter STinG in der DEFAULT.CFG die Variablen EMAIL und
+SMTP_SERVER definiert sein.
+
+
+
+11  V5.58
+*********
+
+Neu : HTTP-Header benutzt "Referer:" Feld fÅr *ALLE* Methoden, Dank an
+Pascal Ricard.
+
+
+
+12  V5.57
+*********
+
+Neu : HTTP-Header benutzt "Referer:" Feld fÅr POST Methode, dadurch
+funktionieren einige Formulare (Getestet mit meiner Homepage).
+
+Neu : deutschesprachige RSC-Datei und Anleitung, Dank an Harald
+Placke.
+
+
+
+13  V5.56
+*********
+
+FIX : Speicherfehler im TCP-Puffer, Dank an Bernd Maedicke.
+
+FIX : Fehler beim Cookie-Pfad, Dank an Bernd Maedicke.
+
+
+
+14  V5.55
+*********
+
+Neu : Turbo-Modus ist direkt eingebaut, eine Konfiguration entfÑllt
+
+Neu : In der Konfiguration SETUP ist ein Schalter "Verwaltung durch
+CAB" hinzugekommen, der CAB veranlaût die Cookies selbst zu verwalten.
+
+Fix : Schwerer Fehler in der Cookiebehandlung zwischen CAB und OVL.
+
+Fix : Keine Anzeige Åber eintreffende Daten in der CAB Infozeile.
+"receiving data xxxx/xxxx" ist nur fÅr reale Daten. Dies erhîht die
+Net-Geschwindigkeit im Fall einer Umlenkung.
+
+Angaben zu Ñlteren Versionen sind dem englischen Text zu entnehmen.
+
+
+
+UDO6
+****
+
+                   http://www.dirk-hagedorn.de/et/
+
+
+
