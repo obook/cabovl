@@ -4,7 +4,7 @@
 
 This repository holds the C sources of CAB.OVL V5.68 (January 19, 2000), reconstructed from the original binary, and the original release files.
 
-Documentation: [manual](docs/MANUAL.md) and [version history](docs/HISTORY.md).
+Documentation: [manual](docs/MANUAL.md) and [version history](docs/HISTORY.md). In German: [Anleitung](docs/de/MANUAL.md) and [History](docs/de/HISTORY.md).
 
 CAB.OVL was written by Olivier Booklage. The reconstructed sources are covered by the GNU General Public License version 2 or later (see [License](#license)).
 
@@ -65,7 +65,7 @@ CAB 1.5 is the browser the reconstructed module is meant to be tested with.
 
 The release was marked as a beta version for beta testers.
 
-The manual and the history are also available as Markdown: [docs/MANUAL.md](docs/MANUAL.md) and [docs/HISTORY.md](docs/HISTORY.md).
+The manual and the history are also available as Markdown: [docs/MANUAL.md](docs/MANUAL.md) and [docs/HISTORY.md](docs/HISTORY.md), in German [docs/de/MANUAL.md](docs/de/MANUAL.md) and [docs/de/HISTORY.md](docs/de/HISTORY.md).
 
 ## Known problems (from the original manual)
 
