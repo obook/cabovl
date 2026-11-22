@@ -120,12 +120,15 @@ Files are in the original Atari ST character set (accents included) with CRLF li
 | STRISTR.S, FXDATIME.S | assembler routines |
 | CABOVL.PRJ | Pure C project file |
 | B64ENCOD.C, EXEC.C, ENV.C, LANGUAGE.C | not in the project file |
+| LOGFILE.C | log library, rebuilt from `lib/LOGFILE.LIB` (the original source is lost) |
 
-The headers the sources include are in [include/](include/README.md).
+The headers the sources include are in [include/](include/README.md). The log library is in [lib/](lib/README.md).
+
+`LOGFILE.C` is the only file that is not original. It follows the code of the library function by function. It has not been built with Pure C. A test on a PC, with the GEMDOS calls replaced by POSIX ones, writes the expected lines and shrinks the file at the size limit.
 
 ### Building
 
-Not tested. `CABOVL.PRJ` lists the modules and the libraries. Several libraries are not in this repository: Pure C libraries, `sting.lib`, `logfile.lib`, NKCC, windform 3.00, IConnect and Draconis socket libraries. Some headers are missing too (see [include/README.md](include/README.md)).
+Not tested. `CABOVL.PRJ` lists the modules and the libraries. Several libraries are not in this repository: Pure C libraries, `sting.lib`, NKCC, windform 3.00, IConnect and Draconis socket libraries. Some headers are missing too (see [include/README.md](include/README.md)).
 
 ## Origin and license
 
