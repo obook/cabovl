@@ -1,0 +1,16 @@
+..\icons.lib
+.C [-K -G -P]
+.L [-J]
+
+=
+
+back.c
+binary.c
+blank.c
+image.c	
+index.c
+menu.c
+movie.c
+sound.c
+text.c
+unknown.c

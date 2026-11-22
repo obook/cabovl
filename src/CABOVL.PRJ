@@ -1,0 +1,49 @@
+cab.ovl
+=                  ; list of modules follows...
+
+pcstar2.o          ; startup code
+
+main.c             ( version.h ) ; compile topmost window
+
+config.c
+get_info.c
+get_url.c
+post_url.c
+if_modif.c
+cookie.c
+authen.c
+mailto.c
+
+globals.c
+http_get.c
+cache_ip.c
+my_head.c			; envoi du header
+header.c			; analyse du header
+sendicon.c		; icones internes
+setup.c				; ( version.h )
+report.c			;
+rsc.c					; ( cab_ovl.rsc )
+tools.c
+tcp.c
+tcp\stik.c
+tcp\iconnect.c
+java.c
+
+icons.lib
+nkcc\nkcc_tos.o		; Il y a des doubles def si on le place … la fin !! sysgem ?
+
+PCBGILIB.LIB       ; BGI library
+PCFLTLIB.LIB       ; floating point library
+PCSTDLIB.LIB       ; standard library
+
+PCEXTLIB.LIB       ; extended library
+PCTOSLIB.LIB       ; TOS library
+PCGEMLIB.LIB       ; AES and VDI library
+
+sting\sting.lib
+yield\yield.o
+draconis\stsocket.lib
+iconnect\socklib.lib
+logfile.lib
+windform\userdefs.o
+windform\wform300.lib

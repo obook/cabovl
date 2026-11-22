@@ -115,16 +115,17 @@ Files are in the original Atari ST character set (accents included) with CRLF li
 | MAILTO.C | mailto: links (SMTP) |
 | TCP.C, CACHE_IP.C | TCP/IP stacks, name cache |
 | TOOLS.C, GLOBALS.C | helpers, shared definitions |
-| JAVA.C, EXEC.C, ENV.C, LANGUAGE.C, B64ENCOD.C | not in the project file `CABOVL.PDB` |
+| TCP/ | one file per TCP/IP stack: `STIK.C` (STiK, STinG), `ICONNECT.C` (IConnect), `MINTNET.C`, `DRACONIS.C` and `MODELE.C` (template) |
+| ICONS/ | the gopher icons as C data, built into `ICONS.LIB` |
+| STRISTR.S, FXDATIME.S | assembler routines |
+| CABOVL.PRJ | Pure C project file |
+| B64ENCOD.C, EXEC.C, ENV.C, LANGUAGE.C | not in the project file |
 
-### Missing from the archive
-
-- `TCP\STIK.C` and `TCP\ICONNECT.C`, listed in the project file.
-- Pure C libraries, windform (dialog windows).
+The headers the sources include are in [include/](include/README.md).
 
 ### Building
 
-Not tested. The project file `CABOVL.PDB`, the object files and `ICONS.LIB` are in `STIKCOVL.ZIP`, not in this repository.
+Not tested. `CABOVL.PRJ` lists the modules and the libraries. Several libraries are not in this repository: Pure C libraries, `sting.lib`, `logfile.lib`, NKCC, windform 3.00, IConnect and Draconis socket libraries. Some headers are missing too (see [include/README.md](include/README.md)).
 
 ## Origin and license
 
