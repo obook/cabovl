@@ -1,245 +1,365 @@
 /*
- * REPORT.C - pages d'erreur et de rapport servies à CAB (V5.68, 19 janvier 2000)
+ * report.c
+ * Messages d'erreur et rapports affich�s sous forme de page HTML.
  *
- * Source reconstitué à partir du binaire CAB.OVL (Pure C), fonctions de
- * 0x146ee à 0x14c9a. Le nom du module vient de la chaîne __FILE__
- * "I:\STIKCOVL\REPORT.C". ReportRequestText et ReportText sont les noms des
- * chaînes de trace, les autres noms sont des noms de reconstitution.
- * Le HTML des pages est écrit en dur dans le binaire. Seuls les messages
- * viennent de CAB_OVL.RSC, arbre 6 (les lignes 1 et 2 de l'arbre ne sont
- * pas lues). Non compilé avec Pure C, à vérifier.
+ * �crit dans un fichier la page que CAB affiche quand une requ�te
+ * �choue : texte pris dans la ressource, code d'erreur ou texte
+ * libre.
+ *
+ * Utilise : CAB_OVL.H, GLOBALS.H, MAIN.H, RSC.H, TOOLS.H
+ * Utilis� par : HTTP_GET.C, MAILTO.C, SETUP.C
+ *
+ * Cr�ation : 25/03/1999
+ * Auteur : Olivier Booklage
+ * Date : Janvier 2000 (V5.68)
+ * Licence : GNU General Public License version 2 ou ult�rieure
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
-#include "CABOVL.H"
-#include "REQUEST.H"
-#include "LOG.H"
-#include "GUI.H"
-#include "REPORT.H"
+/* ---       Includes externes       -- */
 
-extern long Fcreate(char *name, int attr);          /* GEMDOS */
-extern int Fclose(int handle);
-extern long Fdelete(char *name);
-extern long Fwrite(int handle, long count, void *buf);
+#include	<stdio.h>
+#include	<string.h>
+#include	<tos.h>
+#include	<time.h>
+#include	<aes.h>
+#include	<portab.h>
+#include	<logfile.h>
 
-extern char *strlwr(char *s);                       /* 0x1af2c, bibliothèque */
+#include	"globals.h"
+#include	"cab_ovl.h"		/* indexes ressource */
+#include	"rsc.h"
+#include	"tools.h"
 
-extern char ovl_ver_str[];                          /* OVL.C */
-extern char ck_tmpname[];
+#include	<cab\module.h>
+#include	"main.h"
 
-static char err_url[0x400];                         /* 0x2af3e */
-static char date_buf[50];                           /* 0x2af06 */
-static time_t now_buf;                              /* 0x2af3a */
+/* ---       Includes internes       -- */
 
-/* Compteur et noms de page d'erreur, 0x21ebe, 0x21ec0 et 0x21ec9. */
-static char name_cnt[2] = { 'A', 'C' };
-static char name_cur[9] = "12345678";
-static char name_tmp[9] = "12345678";
+#include "report.h"
 
-/* Texte de la ligne code de l'arbre 6 (0x14b88). */
-static char *error_text(code)
-int code;
+/* --- Constantes globales internes --- */
+
+/* --- Structures globales internes --- */
+
+/* --- Variables globales  internes --- */
+
+EXTERN OBJECT *report_form;	/* dans rsc.c */
+LOCAL UBYTE date[51];
+LOCAL ULONG ul_today;
+
+/* nouveau nom en cas d'erreur */
+
+char lecteur1 = 'A', lecteur2 = 'C';
+LOCAL UBYTE upfname[] = "12345678";/* doivent OBLIGATOIREMENT garder leur valeur */
+LOCAL UBYTE wrkname[] = "12345678";
+
+LOCAL UBYTE HEADER[]="<HTML><HEAD><TITLE>\n\nCAB.OVL Report\n\n</TITLE></HEAD><BODY>\n\n";
+
+/* avant serveur */
+LOCAL UBYTE SERVER_START[]="Server: ";
+
+/* apr�s serveur */
+LOCAL UBYTE SERVER_END[]="<BR>\n";
+
+/* avant URL */
+LOCAL UBYTE URL_1_3[]="URL: <A HREF=\"";
+
+/* avant URL */
+LOCAL UBYTE URL_2_3[]="\">";
+
+/* apr�s URL */
+LOCAL UBYTE URL_3_3[]="</A><BR><BR>\n\n";
+
+/* avant texte */
+LOCAL UBYTE TEXTE_START[]="<HR><H1><B>\n\n";
+
+/* apr�s texte */
+LOCAL UBYTE TEXTE_END[]="\n\n</B></H1>";
+
+/* avant version */
+LOCAL UBYTE VERSION_START[]="<HR><I>\nCreated by cab.ovl V";
+
+/* avant date */
+LOCAL UBYTE DATE_START[]=" ";
+
+/* fin */
+LOCAL UBYTE FOOTER[]="\n</I></BODY></HTML>";
+
+/* D�placement de l'RL contenant l'erreure */
+
+LOCAL UBYTE	err_URL[1024];
+
+/* ---     Prototypage interne      --- */
+
+LOCAL UBYTE *ChaineRessouce( INT index );
+LOCAL INT Write( INT handle, UBYTE *string );
+LOCAL UBYTE *NewIndex (UBYTE	*upfname,UBYTE	*wrkname);
+
+/* ---         Fonctions            --- */
+
+
+/* ++++++++++++++++++ Utilisation de la structure Request ++++++++++++++++++ */
+
+/*
+
+	Retourne la longueur du fichier HTML
+	file_name		nom du fichier � ouvrir ou NULL
+	file_handle	poiteur du fichier ou -1 si on doit se servir de file_name
+	code				code d'erreur, index dans r du ressource
+	
+*/
+
+INT ReportRequestIndex( REQUEST *request, UBYTE *file_name, INT *file_handle, INT rsc_index)
 {
-    return ((TEDINFO *)tree_report[code].ob_spec)->te_ptext;
+	NewIndex (upfname,wrkname);
+	*err_URL = '\0';
+	strncat( err_URL, "http://cab.ovl/error?", 1024);
+	strncat( err_URL, strlwr(wrkname), 1024);
+	return ( ReportText( request->URL , file_name, file_handle, ChaineRessouce(rsc_index) ) );
 }
 
-/* Écrit s dans le fichier h (0x14ba0). Renvoie le retour de Fwrite. */
-static long put(s, h)
-char *s;
-short h;
+INT ReportRequestCode( REQUEST *request, INT code)
 {
-    return Fwrite(h, (long)strlen(s), s);
+	return ( ReportRequestText( request, ChaineRessouce(code) ) );
 }
 
-/* Fabrique un nom de 8 caractères dans tmp et le copie dans dest (0x14bc4).
-   Les 6 premiers caractères viennent de l'heure, calculée une seule fois :
-   année, mois, jour, heure, minutes. Les 2 derniers viennent d'un compteur
-   qui avance à chaque appel. */
-static void make_name(dest, tmp)
-char *dest;
-char *tmp;
+INT ReportRequestText( REQUEST *request, UBYTE *texte)
 {
-    time_t t;
-    struct tm *tm;
+INT 	my_handle=-1;
+INT 	total = 0;
+UBYTE	*new_filename;
 
-    if (name_cnt[0] == 'A' && name_cnt[1] == 'C')
-    {
-        t = time(0);
-        tm = localtime(&t);
-        tmp[0] = (char)('A' + tm->tm_year % 10);
-        tmp[1] = (char)('A' + tm->tm_mon);
-        tmp[2] = (char)('A' + tm->tm_mday);
-        if ((unsigned char)tmp[2] > 'Z')
-            tmp[2] -= 0x2a;
-        tmp[3] = (char)('A' + tm->tm_hour);
-        tmp[4] = (char)('A' + tm->tm_min / 10);
-        tmp[5] = (char)('A' + tm->tm_min % 10);
-    }
-    name_cnt[1]++;
-    if (name_cnt[1] > 'Z')
-    {
-        name_cnt[1] = 'C';
-        name_cnt[0]++;
-        if (name_cnt[0] > 'Z')
-            name_cnt[0] = 'A';
-    }
-    tmp[6] = name_cnt[0];
-    tmp[7] = name_cnt[1];
-    tmp[8] = 0;
-    dest[0] = 0;
-    strncat(dest, tmp, 8);
+	LOG_printf("> ReportRequestText <%s> <%d> <%s>\n", request->filename, request->file_handle, texte);
+
+	if ( request->file_handle > 0 )
+	{
+		LOG_printf("~ ReportRequest : Fclose <%s>\n", request->filename);
+		Fclose( request->file_handle );
+		if ( request->cache_exist != TRUE )
+		{
+			LOG_printf("~ ReportRequest : delete <%s>\n", request->filename);
+			Fdelete( request->filename );
+		}
+		request->file_handle = -1;
+	}
+
+#ifdef notdef
+	
+	/* Si fichier d�j� dans le cache, on ne l'�crase pas ! */
+	
+	if ( request->cache_exist == TRUE )
+	{
+		LOG_printf("~ ReportRequest : <%s> old cache file is used\n", request->filename);
+		return(0);
+	}
+
+#endif
+
+#ifdef NOTDEF
+
+	NewIndex (upfname,wrkname);
+	*err_URL = '\0';
+	strncat( err_URL, "http://cab.ovl/error?", 1024);
+	strncat( err_URL, strlwr(wrkname), 1024);
+
+	if (browser->new_url( err_URL, &new_filename) !=0 )
+	{
+		new_filename = request->filename;
+		LOG_printf("! browser can not give a new filename, use default <%s>.\n", new_filename);
+	}
+
+	/* Probleme avec AUTOSURF */
+	
+	if ( *new_filename == '\0' )
+		new_filename = TMP_FILE;
+
+#endif
+
+	new_filename = request->filename;
+			
+	my_handle=(INT)Fcreate( new_filename, 0);
+	
+	if ( my_handle < 0 )
+	{
+		LOG_printf("? Couldn't create <%s> <%d>\n", request->filename, my_handle);
+		return(-1);
+	}
+		
+	time(&( (time_t)(ul_today) ));
+	Strftime(date,50,"%a, %d %b %Y %X",localtime(&((time_t)(ul_today))));
+
+	total = total + Write( my_handle, HEADER );
+
+	total = total + Write( my_handle, SERVER_START );
+
+	total = total + Write( my_handle, request->server );
+
+	total = total + Write( my_handle, SERVER_END );
+
+	total = total + Write( my_handle, URL_1_3 );
+
+	total = total + Write( my_handle, request->URL );
+
+	total = total + Write( my_handle, URL_2_3 );
+
+	total = total + Write( my_handle, request->URI );
+
+	total = total + Write( my_handle, URL_3_3 );
+
+	total = total + Write( my_handle, TEXTE_START);
+
+	total = total + Write( my_handle, texte );
+
+	total = total + Write( my_handle, TEXTE_END);
+
+	total = total + Write( my_handle, VERSION_START);
+
+	total = total + Write( my_handle, ovl_version_str);
+
+	total = total + Write( my_handle, DATE_START);
+
+	total = total + Write( my_handle, date);
+
+	total = total + Write( my_handle, FOOTER );
+
+	Fclose(my_handle);
+
+return(total);
 }
 
-/* Prépare la date de la page dans date_buf. */
-static void make_date()
+/* ++++++++++++++++++ Utilisation de la ressource ++++++++++++++++++ */
+
+INT ReportRscMessage( UBYTE *file_name, INT *file_handle, INT index)
 {
-    time(&now_buf);
-    strftime(date_buf, 50, "%a, %d %b %Y %X", localtime(&now_buf));
+	NewIndex (upfname,wrkname);
+	*err_URL = '\0';
+	strncat( err_URL, "http://cab.ovl/error?", 1024);
+	strncat( err_URL, strlwr(wrkname), 1024);
+	return ( ReportText( err_URL , file_name, file_handle, ChaineRessouce(index) ) );
 }
 
-/* Écrit la fin de la page : message, signature et date. Renvoie la somme
-   des retours de Fwrite (le total est une somme de short, sans test d'erreur). */
-static short put_footer(h, text)
-short h;
-char *text;
-{
-    short n = 0;
+/* ++++++++++++++++++ Message Simple ++++++++++++++++++ */
 
-    n += (short)put("<HR><H1><B>\n\n", h);
-    n += (short)put(text, h);
-    n += (short)put("\n\n</B></H1>", h);
-    n += (short)put("<HR><I>\nCreated by cab.ovl V", h);
-    n += (short)put(ovl_ver_str, h);
-    n += (short)put(" ", h);
-    n += (short)put(date_buf, h);
-    n += (short)put("\n</I></BODY></HTML>", h);
-    return n;
+INT ReportText( UBYTE *URL, UBYTE *file_name, INT *file_handle, UBYTE *texte)
+{
+INT		my_handle=-1;
+INT		total = 0;
+UBYTE	*new_filename;
+
+	LOG_printf("> ReportText <%s> <%d> <%s>\n", file_name, *file_handle, texte);
+
+	if ( *file_handle > 0 )
+	{
+		Fclose(*file_handle);
+		Fdelete( file_name );
+		*file_handle = -1;
+	}
+	
+	if (browser->new_url( URL, &new_filename) !=0 )
+	{
+		new_filename = file_name;
+		LOG_printf("! browser can not give a new filename, use default <%s>\n", new_filename);
+	}
+
+	if ( *new_filename == '\0' )
+		new_filename = TMP_FILE;
+
+	
+	my_handle=(INT)Fcreate(new_filename, 0);
+	
+	if ( my_handle < 0 )
+	{
+		LOG_printf("? Couldn't create <%s> <%d>\n", new_filename, my_handle);
+		return(-1);
+	}
+
+	time(&( (time_t)(ul_today) ));
+	Strftime(date,50,"%a, %d %b %Y %X",localtime(&((time_t)(ul_today))));
+
+	total = total + Write( my_handle, HEADER );
+
+
+
+
+
+	total = total + Write( my_handle, URL_1_3 );
+
+	total = total + Write( my_handle, URL );
+
+	total = total + Write( my_handle, URL_2_3 );
+
+	total = total + Write( my_handle, URL );
+
+	total = total + Write( my_handle, URL_3_3 );
+
+
+
+
+
+	
+	total = total + Write( my_handle, TEXTE_START);
+
+	total = total + Write( my_handle, texte );
+
+	total = total + Write( my_handle, TEXTE_END);
+
+	total = total + Write( my_handle, VERSION_START);
+
+	total = total + Write( my_handle, ovl_version_str);
+
+	total = total + Write( my_handle, DATE_START);
+
+	total = total + Write( my_handle, date);
+
+	total = total + Write( my_handle, FOOTER );
+
+	Fclose(my_handle);
+
+return(total);
 }
 
-/* Page d'erreur d'une requête : appelle ReportText avec le message de la
-   ligne code de l'arbre 6. fh est le handle du fichier à fermer et effacer
-   s'il est ouvert.
-   Défaut de l'original : il fabrique l'adresse http://cab.ovl/error?... dans
-   err_url comme file_error, puis passe req->url à ReportText et ignore err_url. */
-void report_error(req, file, code, fh)
-REQUEST *req;
-char *file;
-int code;
-short *fh;
+/* ++++++++++++++++++ Outils ++++++++++++++++++ */
+
+LOCAL UBYTE *ChaineRessouce( INT index )
 {
-    make_name(name_cur, name_tmp);
-    err_url[0] = 0;
-    strncat(err_url, "http://cab.ovl/error?", 0x400);
-    strncat(err_url, strlwr(name_tmp), 0x400);
-    ReportText(req->url, file, fh, error_text(code));
+	return( report_form[index].ob_spec.tedinfo->te_ptext);
 }
 
-/* Remplace le fichier de la requête par une page de rapport contenant text.
-   Renvoie la longueur écrite, ou -1 si le fichier ne se crée pas. */
-int ReportRequestText(req, text)
-REQUEST *req;
-char *text;
+LOCAL INT Write( INT handle, UBYTE *string )
 {
-    short h = -1;
-    short n = 0;
-
-    trace("> ReportRequestText <%s> <%d> <%s>\n", req->file, (int)req->file_handle, text);
-
-    if (req->file_handle > 0)
-    {
-        trace("~ ReportRequest : Fclose <%s>\n", req->file);
-        Fclose(req->file_handle);
-        if (req->cached != 1)
-        {
-            trace("~ ReportRequest : delete <%s>\n", req->file);
-            Fdelete(req->file);
-        }
-        req->file_handle = -1;
-    }
-
-    h = (short)Fcreate(req->file, 0);
-    if (h < 0)
-    {
-        trace("? Couldn't create <%s> <%d>\n", req->file, (int)h);
-        return -1;
-    }
-
-    make_date();
-    n += (short)put("<HTML><HEAD><TITLE>\n\nCAB.OVL Report\n\n</TITLE></HEAD><BODY>\n\n", h);
-    n += (short)put("Server: ", h);
-    n += (short)put(req->server, h);
-    n += (short)put("<BR>\n", h);
-    n += (short)put("URL: <A HREF=\"", h);
-    n += (short)put(req->url, h);
-    n += (short)put("\">", h);
-    n += (short)put(req->path, h);
-    n += (short)put("</A><BR><BR>\n\n", h);
-    n += put_footer(h, text);
-    Fclose(h);
-    return n;
+INT len = (INT)strlen(string);
+return( (INT)Fwrite(handle, len, string) );
 }
 
-/* Page d'erreur d'un fichier (création, écriture, fermeture) : op est la
-   ligne du message dans l'arbre 6. err est le handle à fermer. */
-void file_error(file, op, err)
-char *file;
-int op;
-short *err;
+LOCAL UBYTE *NewIndex (UBYTE	*upfname,UBYTE	*wrkname)
 {
-    make_name(name_cur, name_tmp);
-    err_url[0] = 0;
-    strncat(err_url, "http://cab.ovl/error?", 0x400);
-    strncat(err_url, strlwr(name_tmp), 0x400);
-    ReportText(err_url, file, err, error_text(op));
+	if (( lecteur1 == 'A' ) && ( lecteur2 == 'C' ))
+	{
+		time_t zeit = time( NULL );
+		struct tm *t = localtime ( &zeit );
+		wrkname[0] = (char)(( t->tm_year % 10 ) + 0x41 );
+		wrkname[1] = t->tm_mon + 0x41;
+		wrkname[2] = t->tm_mday + 0x41;
+		if ( wrkname[2] > 'Z' ) wrkname[2] -= 0x2a;
+		wrkname[3] = (char)(( t->tm_hour ) + 0x41 );
+		wrkname[4] = (char)(( t->tm_min / 10 ) + 0x41 );
+		wrkname[5] = (char)(( t->tm_min % 10 ) + 0x41 );
+
+	}
+
+	if ( ++lecteur2 > 'Z' )
+	{
+		lecteur2 = 'C';
+		if ( ++lecteur1 > 'Z' ) lecteur1 = 'A';
+	}
+
+	wrkname[6] = lecteur1;
+	wrkname[7] = lecteur2;
+	wrkname[8] = '\0';
+
+	*upfname=0;
+	strncat( upfname, wrkname ,8);
+return ( upfname );
 }
 
-/* Écrit une page de rapport pour url. CAB propose un nom de fichier, sinon
-   file, sinon cabovl.tmp. Renvoie la longueur écrite, ou -1 si la création échoue.
-   Si *fh > 0, ferme et efface file d'abord, quel que soit le nom choisi ensuite. */
-int ReportText(url, file, fh, text)
-char *url;
-char *file;
-short *fh;
-char *text;
-{
-    char *name;
-    short h;
-    short n = 0;
-
-    trace("> ReportText <%s> <%d> <%s>\n", file, (int)*fh, text);
-
-    if (*fh > 0)
-    {
-        Fclose(*fh);
-        Fdelete(file);
-        *fh = -1;
-    }
-
-    if ((*cab->new_filename)(url, &name) != 0)
-    {
-        trace("! browser can not give a new filename, use default <%s>\n", file);
-        name = file;
-    }
-    if (name[0] == 0)
-        name = ck_tmpname;
-
-    h = (short)Fcreate(name, 0);
-    if (h < 0)
-    {
-        trace("? Couldn't create <%s> <%d>\n", name, (int)h);
-        return -1;
-    }
-
-    make_date();
-    n += (short)put("<HTML><HEAD><TITLE>\n\nCAB.OVL Report\n\n</TITLE></HEAD><BODY>\n\n", h);
-    n += (short)put("URL: <A HREF=\"", h);
-    n += (short)put(url, h);
-    n += (short)put("\">", h);
-    n += (short)put(url, h);
-    n += (short)put("</A><BR><BR>\n\n", h);
-    n += put_footer(h, text);
-    Fclose(h);
-    return n;
-}
+/* ---          EOF                 --- */

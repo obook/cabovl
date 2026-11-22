@@ -1,620 +1,606 @@
 /*
- * MAILTO.C - envoi de courrier (liens mailto:) de CAB.OVL (V5.68)
+ * mailto.c
+ * Envoi d'un message pour les liens mailto:.
  *
- * Source reconstitué à partir du binaire CAB.OVL (Pure C).
- * Adresses : tobase64 0x11624, mailto 0x11768, smtp_reply 0x11c3a,
- * Send_Commande 0x11e58, Send_Message 0x11f58, Send_Char 0x120d6,
- * url_decode 0x12190, hex_byte 0x121d2, escape_string 0x12212.
- * La fonction en 0x12266 (boucle de redirection) est http_loop, dans HTTP_GET.C.
+ * Ouvre une connexion SMTP, envoie les commandes et le message
+ * (Send_Commande, Send_Message, Send_Char) et analyse les codes
+ * de r�ponse du serveur.
  *
- * L'adresse de l'expéditeur et le serveur SMTP ne viennent ni de CONFIG ni
- * de CAB : ce sont les variables "EMAIL" et "SMTP_SERVER" de la pile TCP
- * (lues par getvstr, 0x1636c). Le module n'écrit aucune adresse e-mail.
+ * Utilise : CONFIG.H, GLOBALS.H, MAIN.H, REPORT.H, RSC.H, TCP.H,
+ *   TOOLS.H
+ * Utilis� par : HTTP_GET.C
  *
- * Non compilé avec Pure C, à vérifier.
+ * Cr�ation : 07/10/1999
+ * Auteur : Olivier Booklage
+ * Date : Janvier 2000 (V5.68)
+ * Licence : GNU General Public License version 2 ou ult�rieure
+ * Notes d'origine : voir le commentaire qui suit.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-#include <time.h>
-#include "CABOVL.H"
-#include "CONFIG.H"
-#include "LOG.H"
-#include "TCP.H"
+/*------------------------------------------------
+//
+//	Module	:	mailto.c
+//
+//	Objet		:
+//
+//	ToDo		:
+//
+//	Tab.		:	2
+//
+//
+//
+//	Maintenance	:
+//
+//		Version		:	V1.0
+//		Auteur		:	Olivier Booklage
+//		Email			:	xxx@xxx.xxx
+//		Homepage	:	http://xxx.xxx.xxx/
+//		Date			:	07/10/1999
+//		Remarques	: detection \r\n.\r\n a refaire plus bas...
+//
 
-extern int my_form_alerte(char *title, char *fmt, ...);     /* 0x15320 */
-extern char *stik_error_text(short code);              /* 0x15574, texte d'une erreur TCP */
-extern int ReportText(char *url, char *file, short *handle, char *text);   /* 0x149c0 */
+> 10 Oct 13:54:16 OVL  Send_Message <Site=Bien&clair=Moyen&informations=Oui&Plait=ligne+1&Cherche=ligne+2&Navi=Netscape&navitext=ligne+3>
 
-/* Délai d'envoi d'un octet ou d'une commande, en ticks de 200 Hz. */
-#define SEND_TIMEOUT 0x4240L
+//
+//
+//-----------------------------------------------*/
 
-/* Codes de réponse SMTP utilisés. */
-#define SMTP_READY 220
-#define SMTP_OK 250
-#define SMTP_DATA 354
 
-/* États du dialogue SMTP. */
-#define ST_HELO 1       /* attend la salutation puis la réponse à helo */
-#define ST_FROM 2       /* attend la réponse à mail from */
-#define ST_RCPT 3       /* attend la réponse à rcpt to */
-#define ST_DATA 4       /* attend la réponse à data */
-#define ST_BODY 5       /* attend la réponse au message */
-#define ST_DONE 6       /* message accepté */
-#define ST_ERROR 7      /* échec */
+/* ---       Includes externes       -- */
 
-/* Variables globales du module, en 0x250e6 (handle) et 0x250e8 (mail). */
-static short smtp_handle;
-static struct
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<string.h>
+#include	<time.h>
+#include	<tos.h>
+#include	<sting\transprt.h>
+#include	<portab.h>
+#include	<logfile.h>
+
+#include	<cab\module.h>
+#include	"globals.h"
+#include	"main.h"
+#include	"config.h"
+#include	"tcp.h"
+#include	"rsc.h"
+#include	"report.h"
+#include	"tools.h"
+
+/* ---       Includes internes       -- */
+
+#include	"mailto.h"
+
+/* --- Constantes globales internes --- */
+
+#define TCP_PORT				25
+#define TCP_MAILBUFFER	500
+#define TCP_TIMEOUT			5000
+
+#define WAIT_HELO				1
+#define WAIT_SEND_OK			2
+#define WAIT_RCPT_OK			3
+#define SEND_MESSAGE			4
+#define WAIT_MSG_ACCEPTED	5
+#define SEND_OK				6
+#define SEND_ERROR			7
+
+/* --- Structures globales internes --- */
+
+/* --- Variables globales  internes --- */
+
+LOCAL int16	handle;
+LOCAL UBYTE *smtp_server;
+LOCAL UBYTE *email;
+LOCAL	WORD	task;
+
+LOCAL UBYTE *rcpt;
+LOCAL UBYTE *sujet;
+LOCAL UBYTE *encoding;
+LOCAL UBYTE *content;
+
+LOCAL char		x2c(char *what);
+
+/* ---     Prototypage interne      --- */
+
+LOCAL BOOLEAN analyse( INT code, UBYTE* message );
+LOCAL INT Send_Commande( BYTE *fmt, ... );
+LOCAL INT Send_Message( UBYTE *message );
+LOCAL INT Send_Char( UBYTE car );
+LOCAL UBYTE *unescape_url(char *url);
+LOCAL char x2c(char *what);
+
+/* ---         Fonctions            --- */
+
+long my_mailto(char *dest, char *enctype, char *mes)
 {
-    char *server;       /* 0x00, SMTP_SERVER */
-    char *from;         /* 0x04, EMAIL */
-    short state;        /* 0x08 */
-    char *rcpt;         /* 0x0a, destinataire */
-    char *subject;      /* 0x0e, "From the WEB" par défaut */
-    char *enctype;      /* 0x12, type d'encodage du corps */
-    char *message;      /* 0x16, corps */
-} mail;
+INT		ret;
+uint32	smtp_ip;
+int16	bytes_available;
+UBYTE buffer[501];
+WORD key = 0;
+UBYTE *ptr;
+time_t timeout;
+time_t call_cab;
+INT no_data = 3;	/* d�compte imm�diat pendant l'attente de reponse */
 
-/* Tampon de escape_string, en 0x2568d. */
-static char esc_buf[257];
+	rcpt = dest;
+	sujet = "From the WEB";
+	content = mes;
+	encoding = 	enctype;
+	task	= WAIT_HELO;
 
-static char b64_table[] =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+/*
 
+Il se peut que le sujet soit derriere l'email, alors filtrer ex :
 
-/* Encode src en base64 dans dst (taille size). Renvoie 1, ou 0 si dst est trop petit.
-   Défauts reproduits : pas de fin de ligne entre les blocs de 76 caractères, et
-   l'offset d'écriture est remplacé par la taille du bloc au lieu de s'y ajouter. */
-int tobase64(src, dst, size)
-char *src;
-char *dst;
-short size;
-{
-    char line[0x50];
-    unsigned char *p;
-    unsigned char *end;
-    long v;
-    short pos;
-    short groups;
-    short off;
-    short extra;
+	"res1@vcf-com.fr?ici c'est le sujet"
+	
+*/
 
-    pos = 0;
-    groups = 0;
-    p = (unsigned char *)src;
-    end = p + strlen(src);
-    off = 0;
-    trace("> tobase64 <%s>\n", src);
-    if (!(p < end))
-    {
-        trace("~ la fin est plus que le debut\n");
-        return 0;
-    }
-    while (end > p)
-    {
-        memset(line, '=', 0x50);
-        pos = 0;
-        groups = 0;
-        for (;;)
-        {
-            groups++;
-            if (groups >= 20 || !(end > p))
-                break;
-            extra = 0;
-            v = (long)*p++ << 8;
-            if (end > p)
-            {
-                v += *p++;
-                extra++;
-            }
-            v <<= 8;
-            if (end > p)
-            {
-                v += *p++;
-                extra++;
-            }
-            line[pos++] = b64_table[(v & 0xfc0000L) >> 18];
-            line[pos++] = b64_table[(v & 0x3f000L) >> 12];
-            if (extra >= 1)
-                line[pos] = b64_table[(v & 0xfc0L) >> 6];
-            else
-                line[pos] = '=';
-            pos++;
-            if (extra == 2)
-                line[pos] = b64_table[v & 0x3f];
-            else
-                line[pos] = '=';
-            pos++;
-        }
-        line[pos] = 0;
-        pos++;
-        if (size > off + pos)
-        {
-            memcpy(dst + off, line, (long)pos);
-            off = pos;
-        }
-        else
-        {
-            trace("~ buffer de reception <%d> trop petit pour <%d> \n", size, off + pos);
-            return 0;
-        }
-    }
-    return 1;
+	ptr = strchr( rcpt, '?' );
+	if ( ptr != NULL )
+	{
+		*ptr = '\0';
+		sujet = ptr+1;
+	}
+
+	LOG_printf("> mailto : rcpt     = <%s>\n", rcpt );
+	LOG_printf("> mailto : subject  = <%s>\n", sujet );
+	LOG_printf("> mailto : enctype  = <%s>\n", encoding );
+/*LOG_printf("> mailto : filename = <%s>\n", filename );*/
+	
+	email=X_getvstr("EMAIL");
+	if ( email[1] == '\0' && (email[0] == '0' || email[0] == '1') )
+	{
+		my_form_alerte("Mailto","[1][Can not find|\"EMAIL=\"|variable in your system][ Ok ]");
+		return(-1L);
+	}
+
+	smtp_server=X_getvstr("SMTP_SERVER");
+	if ( smtp_server[1] == '\0' && (smtp_server[0] == '0' || smtp_server[0] == '1') )
+	{
+		my_form_alerte("Mailto","[1][Can not find|\"SMTP_SERVER=\"|variable in your system][ Ok ]");
+		return(-1L);
+	}
+
+	browser->msg_status(STATUS_RESOLVING_HOST, 0);
+
+	ret = X_resolve (smtp_server, NULL, &smtp_ip, 1);
+	if ( ret < 0 )
+	{
+		browser->msg_error(CANNOT_RESOLVE);
+		my_form_alerte("Mailto","[1][resolve error on|%s|%s][ Ok ]", smtp_server, STinGRessource( ret ) );
+		return(-1L);
+	}
+
+	browser->msg_status(STATUS_CONNECTING_HOST, 0);
+	
+	handle = X_TCP_open( smtp_ip, TCP_PORT, 0, TCP_MAILBUFFER+1);
+	if ( handle < 0 )
+	{
+		my_form_alerte("Mailto","[1][Network error on|%s|%s][ Ok ]", smtp_server, STinGRessource( handle ) );
+		return(-1L);
+	}
+
+	browser->msg_status(STATUS_SENDING_REQUEST, 0);
+	
+	if ( Send_Commande( "helo [127.0.0.1]\r\n" ) < 0 )
+	{
+		return(-1L);
+	}
+
+	LOG_printf("~ Wait SMTP server <%s> reponse....\n", smtp_server);
+
+	timeout	= clock()+config.timeout*CLK_TCK;
+	call_cab=clock()+(config.gem/1000)*CLK_TCK;		/* appel CAB toutes les secondes */
+			
+	do
+	{
+		bytes_available = X_CNbyte_count(handle);
+		if ( bytes_available > 0)
+		{
+			ret = X_CNget_block(handle,buffer,bytes_available);
+			if ( ret > 0 )
+			{
+				timeout	= clock()+config.timeout*CLK_TCK;
+				buffer[ret]=0;
+				/* Pour la presentation */
+				ptr = buffer+strlen(buffer)-1;
+				while( ( ptr > buffer) && (( *ptr == '\r' ) || ( *ptr == '\n' )) )
+				{
+					*ptr = '\0';
+					ptr--;
+				}
+				LOG_printf("~ receive %d bytes <%s>\n",ret, buffer);
+				buffer[3]='\0';
+				no_data = 0;
+				if ( analyse( atoi(buffer), &buffer[4] ) != TRUE )
+				{
+					key = 27;
+					break;
+				}
+			}
+			else if ( ret < 0 ) /* pour iconnect */
+			{
+				my_form_alerte("Mailto","[1][Network error on|%s|%s][ Ok ]", smtp_server, STinGRessource( ret ) );
+				break;
+			}
+		}
+		else if ( bytes_available < 0 ) /* pour iconnect */
+		{
+			my_form_alerte("Mailto","[1][Network error on|%s|%s][ Ok ]", smtp_server, STinGRessource( bytes_available ) );
+			break;
+		}
+		
+		/* Timeout */
+		
+		if ( clock() > timeout )
+		{
+			LOG_printf("~ Timeout!\n");
+			browser->msg_error(CONNECTION_FAILED);
+			my_form_alerte("Mailto","[1][Server|%s|%s][ Ok ]", smtp_server, STinGRessource( E_CNTIMEOUT ) );
+			key = 27;
+			task = SEND_ERROR;
+		}
+
+		/* Temps pour CAB + touche STOP + touche ESC */
+
+		if ( (clock() > call_cab) && (bytes_available == 0) )
+		{
+			if ( browser->aes_events(config.timer) == -1L )	/* bouton STOP ou touche Esc */
+			{
+				LOG_printf("! aes_events : STOP icon or Esc key pressed\n");
+				/* s'affiche pas :( */
+				browser->msg_error(USERBREAK);	/* histoire de donner quelque chose */
+				key = 27;
+				task = SEND_ERROR;
+			}
+
+			call_cab=clock()+(config.gem/1000)*CLK_TCK;		/* appel CAB toutes les secondes */
+			
+			if ( no_data == 3 )
+			{
+				browser->msg_status(STATUS_WAITINGFORDATA,(timeout-clock())/200);
+			}else if ( no_data < 3)	no_data ++;
+
+		}
+	}
+	while ( key != 27 );
+	
+	if ( Send_Commande("quit\r\n") < 0 )
+		X_TCP_close( handle, 0 );
+	else
+		X_TCP_close( handle, 3 );
+
+	if(	task == SEND_OK )
+	{
+	INT file_handle = -1;
+	
+/*	my_form_alerte("Mailto","[1][Your mail is Sended][ Ok ]"); */
+		LOG_printf("~ mailto return 0L\n");
+		ReportText( "http://cab.ovl?mailto", "dummy.txt", &file_handle, "Your mail is send!");
+	 	return(0L);
+	}
+
+	LOG_printf("~ mailto return an error\n");
+return(-1L);
 }
 
-
-/* Valeur de l'octet écrit en deux chiffres hexadécimaux en p[0], p[1]. */
-static char hex_byte(p)
-char *p;
+LOCAL BOOLEAN analyse( INT code, UBYTE* message )
 {
-    unsigned char hi;
-    unsigned char lo;
+long ul_today;
+UBYTE str_stamp[81];
 
-    if ((unsigned char)p[0] >= 0x41)
-        hi = (p[0] & 0xdf) - 0x37;
-    else
-        hi = p[0] - 0x30;
-    if ((unsigned char)p[1] >= 0x41)
-        lo = (p[1] & 0xdf) - 0x37;
-    else
-        lo = p[1] - 0x30;
-    return (char)((hi << 4) + lo);
+	switch (task)
+	{
+		case WAIT_HELO:
+
+		if ( code == 250 )
+		{
+			if ( Send_Commande("mail from:<%s>\r\n", email) < 0 )
+				return( FALSE );
+		 task = WAIT_SEND_OK;
+		 return(TRUE);
+		}
+		else if ( code == 220 )
+		{
+			return(TRUE);
+		}
+		else
+		{
+			LOG_printf("! %s\n", message);
+			my_form_alerte(smtp_server,"[1][%s][ Ok ]", message );
+			return(FALSE);
+		}
+
+	
+		case WAIT_SEND_OK:
+
+		if ( code == 250 )
+		{
+			if ( Send_Commande("rcpt to:<%s>\r\n", rcpt) < 0 )
+				return(FALSE);
+		 task = WAIT_RCPT_OK;
+		 return(TRUE);
+		}
+		else
+		{
+			LOG_printf("! %s\n", message);
+			my_form_alerte(smtp_server,"[1][%s:|%s][ Ok ]", email, message );
+			return(FALSE);
+		}
+		
+		case WAIT_RCPT_OK:
+
+		if ( code == 250 )
+		{
+			if ( Send_Commande("data\r\n") < 0 )
+				return(FALSE);
+			task = SEND_MESSAGE;
+			return(TRUE);
+		}
+		else
+		{
+			LOG_printf("! %s\n", message);
+			my_form_alerte(smtp_server,"[1][%s:|%s][ Ok ]", rcpt, message );
+			return(FALSE);
+		}
+
+
+		case SEND_MESSAGE:
+
+		if ( code == 354 )
+		{
+
+			time(&( (time_t)(ul_today) ));
+			Strftime(str_stamp,80,"%d %b %Y %X GMT",localtime(&((time_t)(ul_today))));
+
+			if ( Send_Commande("Date: %s\r\n", str_stamp) < 0 )
+			{
+				return(FALSE);
+			}
+				if ( Send_Commande("From: %s\r\n", email) < 0 )
+			{
+				return(FALSE);
+			}
+
+			if ( Send_Commande("To: %s\r\n", rcpt) < 0 )
+			{
+				return(FALSE);
+			}
+
+			if ( Send_Commande("Subject: %s\r\n\r\n", sujet) < 0 )
+			{
+				return(FALSE);
+			}
+			
+			if ( Send_Message( content ) < 0 )
+			{
+				return(FALSE);
+			}
+			else
+			{
+			 task = WAIT_MSG_ACCEPTED;
+			 return(TRUE);
+			}
+		}
+		else
+		{
+			LOG_printf("! %s\n", message);
+			my_form_alerte(smtp_server,"[1][error in your mail:|%s][ Ok ]", message );
+			return(FALSE);
+		}
+
+
+		case WAIT_MSG_ACCEPTED:
+
+		if ( code == 250 )
+		{
+			LOG_printf("~ Message sended!\n");
+			task = SEND_OK;
+			return(FALSE);
+		}
+		else
+		{
+			LOG_printf("! %s\n", message);
+			my_form_alerte(smtp_server,"[1][error in your mail:|%s][ Ok ]", message );
+			task = SEND_ERROR;
+			return(FALSE);
+		}
+	}
+
+return(TRUE);
 }
 
-/* Décode les %XX de s sur place. Renvoie la fin de la chaîne décodée.
-   Aucun contrôle des chiffres hexadécimaux. */
-static char *url_decode(s)
-char *s;
+LOCAL INT Send_Commande( BYTE *fmt, ... )
 {
-    short i;
-    short j;
+INT ret;
+va_list	args;
+UBYTE buffer[501];
+UBYTE *ptr;
+time_t	timeout;
 
-    i = 0;
-    j = 0;
-    while (s[j])
-    {
-        s[i] = s[j];
-        if (s[j] == '%')
-        {
-            s[i] = hex_byte(s + j + 1);
-            j += 2;
-        }
-        i++;
-        j++;
-    }
-    s[i] = 0;
-    return s + i;
+	va_start(args,fmt);
+	vsprintf(buffer,fmt,args);
+	va_end(args);
+
+	timeout	= clock()+TCP_TIMEOUT*CLK_TCK;
+	ret = E_OBUFFULL;
+	while ( ret == E_OBUFFULL )
+	{
+		ret = X_TCP_send( handle, buffer, (INT)strlen(buffer) );
+		if ( clock() > timeout )
+			ret = E_CNTIMEOUT;
+	}
+	
+	/* Pour la presentation */
+	ptr = buffer+strlen(buffer)-1;
+	while( ( ptr > buffer) && (( *ptr == '\r' ) || ( *ptr == '\n' )) )
+	{
+		*ptr = '\0';
+		ptr--;
+	}
+
+	LOG_printf("> Send_Commande <%s> : \"%s\"\n", smtp_server, buffer);
+
+	if ( ret < 0 )
+	{
+		LOG_printf("! TCP_send <%s> error <%s>\n", smtp_server, get_err_text(ret) );
+		browser->msg_error(NETWORK_ERROR);
+		my_form_alerte("Mailto","[1][Server|%s|%s][ Ok ]", smtp_server, STinGRessource( ret ) );
+	}
+return(ret);
 }
 
-/* Copie s dans un tampon statique en faisant précéder "\" et l'espace d'un "\"
-   et en doublant "%", pour un usage dans un format de trace. Nom non vérifié.
-   Défaut : le résultat n'est pas terminé par un octet nul, sauf si s est courte
-   ou si le tampon contenait déjà un nul. */
-char *escape_string(s)
-char *s;
+LOCAL INT Send_Message( UBYTE *message )
 {
-    short i;
-    short j;
+int16 ret;
+UBYTE *ptr = message;
+UBYTE *end = message+strlen(message)-1;
+BOOLEAN detect_point = FALSE;
+BOOLEAN decodage = FALSE;
+time_t	timeout;
 
-    j = 0;
-    esc_buf[0] = 0;
-    for (i = 0; s[i] && j < 0xff; i++)
-    {
-        if (s[i] == '\\' || s[i] == ' ')
-        {
-            esc_buf[j] = '\\';
-            j++;
-        }
-        else if (s[i] == '%')
-        {
-            esc_buf[j] = '%';
-            j++;
-        }
-        esc_buf[j] = s[i];
-        j++;
-    }
-    return esc_buf;
+	LOG_printf("> Send_Message <%s>\n", message);
+	
+	if ( strnicmp( encoding, "application/x-www-form-urlencoded", 35 ) == SUCCESS )
+	{
+		end = unescape_url( message );
+		decodage = TRUE; 
+	}
+
+	while( ptr < end )
+	{
+	
+/*
+
+decodage :
+
+*/
+		if ( decodage == TRUE )
+		{
+			if ( *ptr == '+' )	*ptr = ' ';
+			else
+			if ( *ptr == '&' )
+			{
+				ret = Send_Char( '\r' );
+				if ( ret < 0 ) return( ret );
+				ret = Send_Char( '\n' );
+				if ( ret < 0 ) return( ret );
+				ptr++;
+				if ( ptr > end ) return( 0 );
+			}
+		}
+		
+		if ( (*ptr == '.')
+		 &&
+		  (   (*(ptr+1) == '\r') || (*(ptr+1) == '\n') )
+	   &&
+	    (   (*(ptr-1) == '\r') || (*(ptr-1) == '\n') )	   )
+		{
+			detect_point = TRUE;
+		}
+
+		timeout	= clock()+TCP_TIMEOUT*CLK_TCK;
+		ret = E_OBUFFULL;
+		while ( ret == E_OBUFFULL )
+		{
+			ret = X_TCP_send( handle, ptr, 1 );
+			if ( clock() > timeout )
+				ret = E_CNTIMEOUT;
+		}
+
+		if ( ret < 0 )
+		{
+			LOG_printf("! TCP_send <%s> error <%s>\n", smtp_server, get_err_text(ret) );
+			browser->msg_error(NETWORK_ERROR);
+			my_form_alerte("Mailto","[1][Server|%s|%s][ Ok ]", smtp_server, STinGRessource( ret ) );
+			return(ret);
+		}
+		
+		ptr++;
+		if ( detect_point == TRUE )
+		{
+			ret = Send_Char( ' ' );
+			if ( ret < 0 ) return( ret );
+			detect_point = FALSE;
+		}
+
+	}
+
+	if ( Send_Commande("\r\n.\r\n") < 0 )
+	{
+		return(FALSE);
+	}
+
+return(0);
 }
 
+/*
 
-/* Alerte et trace communes aux erreurs d'envoi sur la connexion. */
-static void send_error(rc, name)
-short rc;
-char *name;
+Faire boucle E_OBUFFULL avec timeout
+
+*/
+
+LOCAL INT Send_Char( UBYTE car )
 {
-    trace(name, mail.server, (*stik_tpl->get_err_text)(rc));
-    (*cab->event)(-0x137L);
-    my_form_alerte("Mailto", "[1][Server|%s|%s][ Ok ]", mail.server, stik_error_text(rc));
+int16 ret;
+time_t timeout;
+
+	LOG_printf("> Send_Char <%d>\n", car);
+
+	timeout	= clock()+TCP_TIMEOUT*CLK_TCK;
+	ret =	E_OBUFFULL	;
+	while ( ret == E_OBUFFULL )
+	{
+		ret = X_TCP_send( handle, &car, 1 );
+		if ( clock() > timeout )
+			ret = E_CNTIMEOUT;
+	}
+
+	if ( ret < 0 )
+	{
+		LOG_printf("! X_TCP_send <%s> error <%s>\n", smtp_server, get_err_text(ret) );
+		browser->msg_error(NETWORK_ERROR);
+		my_form_alerte("Mailto","[1][Server|%s|%s][ Ok ]", smtp_server, STinGRessource( ret ) );
+	}
+		
+return(ret);
 }
 
-/* Envoie un octet. Renvoie 0 ou une erreur négative. */
-int Send_Char(c)
-int c;
-{
-    char b;
-    short rc;
-    long limit;
+/*
 
-    b = (char)c;
-    trace("> Send_Char <%d>\n", (unsigned char)b);
-    limit = clock() + SEND_TIMEOUT;
-    rc = -1;
-    while (rc == -1)
-    {
-        rc = X_TCP_send(smtp_handle, &b, 1);
-        if (limit < clock())
-            rc = -0x10;
-    }
-    if (rc < 0)
-        send_error(rc, "! X_TCP_send <%s> error <%s>\n");
-    return rc;
+
+Decodage
+
+*/
+
+LOCAL UBYTE *unescape_url(char *url)
+{
+register int x,y;
+
+	for(x=0,y=0;url[y];++x,++y)
+	{
+	 if((url[x] = url[y]) == '%')
+	 {
+		 url[x] = x2c(&url[y+1]);
+		 y+=2;
+	 }
+	}
+ 	url[x] = '\0';
+
+return( &url[x] );
+}
+/* son outils : */
+
+LOCAL char x2c(char *what)
+{
+		register char digit;
+
+		digit = (what[0] >= 'A' ? ((what[0] & 0xdf) - 'A')+10 : (what[0] - '0'));
+		digit *= 16;
+		digit += (what[1] >= 'A' ? ((what[1] & 0xdf) - 'A')+10 : (what[1] - '0'));
+		return(digit);
 }
 
-/* Envoie une commande formatée. Renvoie le résultat de X_TCP_send. */
-int Send_Commande(char *fmt, ...)
-{
-    char buf[0x1f6];
-    char *p;
-    va_list ap;
-    short rc;
-    long limit;
-
-    va_start(ap, fmt);
-    vsprintf(buf, fmt, ap);
-    va_end(ap);
-    limit = clock() + SEND_TIMEOUT;
-    rc = -1;
-    while (rc == -1)
-    {
-        rc = X_TCP_send(smtp_handle, buf, (short)strlen(buf));
-        if (limit < clock())
-            rc = -0x10;
-    }
-    p = buf + strlen(buf) - 1;
-    while (p > buf && (*p == '\r' || *p == '\n'))
-    {
-        *p = 0;
-        p--;
-    }
-    trace("> Send_Commande <%s> : \"%s\"\n", mail.server, buf);
-    if (rc < 0)
-        send_error(rc, "! TCP_send <%s> error <%s>\n");
-    return rc;
-}
-
-/* Envoie le corps du message puis la ligne "." finale. Renvoie 0 ou une erreur.
-   Défauts reproduits : sans décodage, le dernier octet du message n'est pas
-   envoyé ; un point seul sur une ligne est suivi d'une espace au lieu d'être doublé ;
-   p[-1] est lu au premier octet ; le résultat de la ligne finale est ignoré. */
-int Send_Message(msg)
-char *msg;
-{
-    char *p;
-    char *end;
-    short dot;
-    short form;
-    short rc;
-    long limit;
-
-    p = msg;
-    end = msg + strlen(msg) - 1;
-    dot = 0;
-    form = 0;
-    trace("> Send_Message <%s>\n", msg);
-    if (strnicmp(mail.enctype, "application/x-www-form-urlencoded", 0x23) == 0)
-    {
-        end = url_decode(msg);
-        form = 1;
-    }
-    while (end > p)
-    {
-        if (form == 1)
-        {
-            if (*p == '+')
-                *p = ' ';
-            else if (*p == '&')
-            {
-                rc = Send_Char('\r');
-                if (rc < 0)
-                    return rc;
-                rc = Send_Char('\n');
-                if (rc < 0)
-                    return rc;
-                p++;
-                if (end < p)
-                    return 0;
-            }
-        }
-        if (*p == '.' && (p[1] == '\r' || p[1] == '\n')
-            && (p[-1] == '\r' || p[-1] == '\n'))
-            dot = 1;
-        limit = clock() + SEND_TIMEOUT;
-        rc = -1;
-        while (rc == -1)
-        {
-            rc = X_TCP_send(smtp_handle, p, 1);
-            if (limit < clock())
-                rc = -0x10;
-        }
-        if (rc < 0)
-        {
-            send_error(rc, "! TCP_send <%s> error <%s>\n");
-            return rc;
-        }
-        p++;
-        if (dot == 1)
-        {
-            rc = Send_Char(' ');
-            if (rc < 0)
-                return rc;
-            dot = 0;
-        }
-    }
-    Send_Commande("\r\n.\r\n");
-    return 0;
-}
-
-
-/* Alerte "erreur de courrier" commune aux réponses refusées. */
-static void reply_error(line, fmt, arg)
-char *line;
-char *fmt;
-char *arg;
-{
-    trace("! %s\n", line);
-    if (arg)
-        my_form_alerte(mail.server, fmt, arg, line);
-    else
-        my_form_alerte(mail.server, fmt, line);
-}
-
-/* Traite une réponse du serveur (code et texte) selon l'état du dialogue.
-   Renvoie 1 pour continuer à attendre, 0 pour arrêter.
-   Nom non vérifié. Défaut : une réponse refusée aux états 1 à 4 laisse l'état
-   inchangé, mailto s'arrête quand même car 0 est renvoyé. */
-static int smtp_reply(line, code)
-char *line;
-int code;
-{
-    char date[0x50];
-    time_t t;
-
-    switch (mail.state)
-    {
-    case ST_HELO:
-        if (code == SMTP_OK)
-        {
-            if (Send_Commande("mail from:<%s>\r\n", mail.from) < 0)
-                return 0;
-            mail.state = ST_FROM;
-            return 1;
-        }
-        if (code == SMTP_READY)
-            return 1;
-        reply_error(line, "[1][%s][ Ok ]", (char *)0);
-        return 0;
-    case ST_FROM:
-        if (code == SMTP_OK)
-        {
-            if (Send_Commande("rcpt to:<%s>\r\n", mail.rcpt) < 0)
-                return 0;
-            mail.state = ST_RCPT;
-            return 1;
-        }
-        reply_error(line, "[1][%s:|%s][ Ok ]", mail.from);
-        return 0;
-    case ST_RCPT:
-        if (code == SMTP_OK)
-        {
-            if (Send_Commande("data\r\n") < 0)
-                return 0;
-            mail.state = ST_DATA;
-            return 1;
-        }
-        reply_error(line, "[1][%s:|%s][ Ok ]", mail.rcpt);
-        return 0;
-    case ST_DATA:
-        if (code == SMTP_DATA)
-        {
-            time(&t);
-            strftime(date, 0x50, "%d %b %Y %X GMT", localtime(&t));
-            if (Send_Commande("Date: %s\r\n", date) < 0)
-                return 0;
-            if (Send_Commande("From: %s\r\n", mail.from) < 0)
-                return 0;
-            if (Send_Commande("To: %s\r\n", mail.rcpt) < 0)
-                return 0;
-            if (Send_Commande("Subject: %s\r\n\r\n", mail.subject) < 0)
-                return 0;
-            if (Send_Message(mail.message) < 0)
-                return 0;
-            mail.state = ST_BODY;
-            return 1;
-        }
-        reply_error(line, "[1][error in your mail:|%s][ Ok ]", (char *)0);
-        return 0;
-    case ST_BODY:
-        if (code == SMTP_OK)
-        {
-            trace("~ Message sended!\n");
-            mail.state = ST_DONE;
-            return 0;
-        }
-        trace("! %s\n", line);
-        my_form_alerte(mail.server, "[1][error in your mail:|%s][ Ok ]", line);
-        mail.state = ST_ERROR;
-        return 0;
-    default:
-        return 1;
-    }
-}
-
-/* Heure du prochain appel des événements GEM, en ticks de 200 Hz.
-   L'ordre multiplication par 1000 puis division par 200 est celui du
-   binaire ; la correspondance des routines flottantes n'est pas vérifiée. */
-static long next_event_time()
-{
-    return (long)((long double)clock()
-                  + (long double)conf.event_interval * 1000.0L / 200.0L);
-}
-
-/* Envoie le message msg à rcpt par SMTP. rcpt peut contenir "?sujet".
-   Renvoie 0 si le message est accepté, -1 sinon.
-   Défauts reproduits : aucun retour de connexion fermée si helo échoue ou si
-   la résolution du nom échoue. */
-int mailto(rcpt, enctype, message)
-char *rcpt;
-char *enctype;
-char *message;
-{
-    char buf[0x1f6];
-    long ip;
-    short result;
-    short done;
-    short count;
-    short got;
-    short avail;
-    long deadline;
-    long next_event;
-    char *p;
-    short report;
-
-    done = 0;
-    count = 3;
-    mail.rcpt = rcpt;
-    mail.subject = "From the WEB";
-    mail.message = message;
-    mail.enctype = enctype;
-    mail.state = ST_HELO;
-    p = strchr(mail.rcpt, '?');
-    if (p)
-    {
-        *p = 0;
-        p++;
-        mail.subject = p;
-    }
-    trace("> mailto : rcpt     = <%s>\n", mail.rcpt);
-    trace("> mailto : subject  = <%s>\n", mail.subject);
-    trace("> mailto : enctype  = <%s>\n", mail.enctype);
-
-    mail.from = X_getvstr("EMAIL");
-    if (mail.from[1] == 0 && (mail.from[0] == '0' || mail.from[0] == '1'))
-    {
-        my_form_alerte("Mailto", "[1][Can not find|\"EMAIL=\"|variable in your system][ Ok ]");
-        return -1;
-    }
-    mail.server = X_getvstr("SMTP_SERVER");
-    if (mail.server[1] == 0 && (mail.server[0] == '0' || mail.server[0] == '1'))
-    {
-        my_form_alerte("Mailto", "[1][Can not find|\"SMTP_SERVER=\"|variable in your system][ Ok ]");
-        return -1;
-    }
-
-    (*cab->progress)(4L, 0L);
-    result = X_resolve(mail.server, (char **)0, 1, &ip);
-    if (result < 0)
-    {
-        (*cab->event)(-0x258L);
-        my_form_alerte("Mailto", "[1][resolve error on|%s|%s][ Ok ]",
-                       mail.server, stik_error_text(result));
-        return -1;
-    }
-    (*cab->progress)(1L, 0L);
-    smtp_handle = X_TCP_open(ip, 25, 0, 501);
-    if (smtp_handle < 0)
-    {
-        my_form_alerte("Mailto", "[1][Network error on|%s|%s][ Ok ]",
-                       mail.server, stik_error_text(smtp_handle));
-        return -1;
-    }
-    (*cab->progress)(5L, 0L);
-    if (Send_Commande("helo [127.0.0.1]\r\n") < 0)
-        return -1;
-
-    trace("~ Wait SMTP server <%s> reponse....\n", mail.server);
-    deadline = clock() + (long)conf.timeout * 200L;
-    next_event = next_event_time();
-    for (;;)
-    {
-        if (done == 0x1b)
-            break;
-        avail = X_CNbyte_count(smtp_handle);
-        if (avail > 0)
-        {
-            got = X_CNget_block(smtp_handle, buf, avail);
-            if (got > 0)
-            {
-                deadline = clock() + (long)conf.timeout * 200L;
-                buf[got] = 0;
-                p = buf + strlen(buf) - 1;
-                while (p > buf && (*p == '\r' || *p == '\n'))
-                {
-                    *p = 0;
-                    p--;
-                }
-                trace("~ receive %d bytes <%s>\n", got, buf);
-                buf[3] = 0;
-                count = 0;
-                if (smtp_reply(buf + 4, atoi(buf)) != 1)
-                {
-                    done = 0x1b;
-                    break;
-                }
-            }
-            else if (got < 0)
-            {
-                my_form_alerte("Mailto", "[1][Network error on|%s|%s][ Ok ]",
-                               mail.server, stik_error_text(got));
-                break;
-            }
-        }
-        else if (avail < 0)
-        {
-            my_form_alerte("Mailto", "[1][Network error on|%s|%s][ Ok ]",
-                           mail.server, stik_error_text(avail));
-            break;
-        }
-
-        if (deadline < clock())
-        {
-            trace("~ Timeout!\n");
-            (*cab->event)(-0x24L);
-            my_form_alerte("Mailto", "[1][Server|%s|%s][ Ok ]",
-                           mail.server, stik_error_text(-0x10));
-            done = 0x1b;
-            mail.state = ST_ERROR;
-        }
-        if (clock() > next_event && avail == 0)
-        {
-            if ((*cab->gem_events)((long)conf.event_duration) == -1L)
-            {
-                trace("! aes_events : STOP icon or Esc key pressed\n");
-                (*cab->event)(-0x13bL);
-                done = 0x1b;
-                mail.state = ST_ERROR;
-            }
-            next_event = next_event_time();
-            if (count == 3)
-                (*cab->progress)(10L, (deadline - clock()) / 200L);
-            else if (count < 3)
-                count++;
-        }
-    }
-
-    if (Send_Commande("quit\r\n") < 0)
-        X_TCP_close(smtp_handle, 0);
-    else
-        X_TCP_close(smtp_handle, 3);
-    if (mail.state == ST_DONE)
-    {
-        report = -1;
-        trace("~ mailto return 0L\n");
-        ReportText("http://cab.ovl?mailto", "dummy.txt", &report, "Your mail is send!");
-        return 0;
-    }
-    trace("~ mailto return an error\n");
-    return -1;
-}
+/* ---          EOF                 --- */

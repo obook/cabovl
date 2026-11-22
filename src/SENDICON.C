@@ -1,70 +1,137 @@
 /*
- * SENDICON.C - ic√¥nes gopher de CAB.OVL (V5.68, 19 janvier 2000)
+ * sendicon.c
+ * Envoi des icìnes internes Ö CAB.
  *
- * Source reconstitu√© √† partir du binaire CAB.OVL (Pure C), fonctions en
- * 0x13e88 (SendIcon) et 0x14034 (GetIcon). Les noms viennent des cha√Ænes
- * de trace. Les donn√©es des ic√¥nes sont dans ICONS.C.
- * Non compil√© avec Pure C, √† v√©rifier.
+ * RÇpond aux URL des icìnes internes (back, text, image, ...)
+ * avec les donnÇes compilÇes dans ICONS.LIB.
+ *
+ * Utilise : GLOBALS.H, ICONS.H
+ * UtilisÇ par : HTTP_GET.C
+ *
+ * CrÇation : 23/03/1998
+ * Auteur : Olivier Booklage
+ * Date : Janvier 2000 (V5.68)
+ * Licence : GNU General Public License version 2 ou ultÇrieure
+ * Notes d'origine : voir le commentaire qui suit.
  */
 
-#include <stdio.h>
-#include <string.h>
-#include "LOG.H"
+/*------------------------------------------------
+//
+// Module: sendicon.c
+//
+// Objet : envoi de fichiers internes (icones)
+//
+// ToDo  : faire last-modified, puis assurer le HEAD
+//
+//
+//
+// Maintenance :
+//
+//     Auteur  : Olivier Booklage
+//     Version : V1.0
+//     Date    : 23/03/1998
+//     Remarq. :
+//
+//
+//
+//-----------------------------------------------*/
 
 
-extern char icon_back[], icon_binary[], icon_blank[], icon_image[], icon_index[];
-extern char icon_menu[], icon_movie[], icon_sound[], icon_text[], icon_unknown[];
-extern short icon_back_len, icon_binary_len, icon_blank_len, icon_image_len;
-extern short icon_index_len, icon_menu_len, icon_movie_len, icon_sound_len;
-extern short icon_text_len, icon_unknown_len;
+/* ---       Includes externes       -- */
 
-/* √âcrit size octets de data dans le fichier. Renvoie size, ou -1. */
-int GetIcon(file, data, size)
-char *file;
-char *data;
-short size;
+#include	<stdio.h>
+#include	<string.h>
+#include	<portab.h>
+#include	<logfile.h>
+
+#include	"globals.h"
+#include	"icons.h"
+
+/* ---       Includes internes       -- */
+
+#include "sendicon.h"	
+
+/* --- Constantes globales internes --- */
+
+/* --- Structures globales internes --- */
+
+/* --- Variables globales  internes --- */
+														
+/* ---     Prototypage interne      --- */
+
+LOCAL LONG GetIcon( UBYTE *filename, UBYTE *data, INT size);
+
+/* ---         Fonctions            --- */
+
+ULONG SendIcon(UBYTE *url, UBYTE *file)
 {
-    FILE *f;
 
-    trace("> GetIcon : Send %s\n", file);
-    f = fopen(file, "w");
-    if (f == 0)
-    {
-        trace("! GetIcon : Can not fopen <%s>\n", file);
-        return -1;
-    }
-    fwrite(data, 1, (size_t)size, f);
-    fclose(f);
-    return size;
+	LOG_printf("> SendIcon : Scan for <%s>\n",url);
+
+	/* faut-t'il comparer la fin ? */
+
+	if ( strcmp(url,"/internal-gopher-back") == SUCCESS )
+		return( GetIcon( file, back_xbm, size_back_xbm) );
+
+	else
+	if ( strcmp(url,"/internal-gopher-binary") == SUCCESS )
+		return( GetIcon( file, binary_xbm, size_binary_xbm) );
+
+	else
+	if ( strcmp(url,"/internal-gopher-blank") == SUCCESS )
+		return( GetIcon( file, blank_xbm, size_blank_xbm) );
+
+	else
+	if ( strcmp(url,"/internal-gopher-image") == SUCCESS )
+		return( GetIcon( file, image_xbm, size_image_xbm) );
+
+	else
+	if ( strcmp(url,"/internal-gopher-index") == SUCCESS )
+		return( GetIcon( file, index_xbm, size_index_xbm) );
+
+	else
+	if ( strcmp(url,"/internal-gopher-menu") == SUCCESS )
+		return( GetIcon( file, menu_xbm, size_menu_xbm) );
+
+	else
+	if ( strcmp(url,"/internal-gopher-movie") == SUCCESS )
+		return( GetIcon( file, movie_xbm, size_movie_xbm) );
+
+	else
+	if ( strcmp(url,"/internal-gopher-sound") == SUCCESS )
+		return( GetIcon( file, sound_xbm, size_sound_xbm) );
+
+	else
+	if ( strcmp(url,"/internal-gopher-text") == SUCCESS )
+		return( GetIcon( file, text_xbm, size_text_xbm) );
+
+	else
+	if ( strcmp(url,"/internal-gopher-unknown") == SUCCESS )
+		return( GetIcon( file, unknown_xbm, size_unknown_xbm) );
+
+
+return(0L);	/* rien trouvÇ */
 }
 
-/* √âcrit dans file l'ic√¥ne demand√©e par l'adresse name. Renvoie la taille
-   √©crite, ou -1 si l'adresse n'est pas une ic√¥ne connue. */
-int SendIcon(name, file)
-char *name;
-char *file;
+LOCAL LONG GetIcon( UBYTE *filename, UBYTE *data, INT size)
 {
-    trace("> SendIcon : Scan for <%s>\n", name);
+FILE *file_ptr;
 
-    if (strcmp(name, "/internal-gopher-back") == 0)
-        return GetIcon(file, icon_back, icon_back_len);
-    if (strcmp(name, "/internal-gopher-binary") == 0)
-        return GetIcon(file, icon_binary, icon_binary_len);
-    if (strcmp(name, "/internal-gopher-blank") == 0)
-        return GetIcon(file, icon_blank, icon_blank_len);
-    if (strcmp(name, "/internal-gopher-image") == 0)
-        return GetIcon(file, icon_image, icon_image_len);
-    if (strcmp(name, "/internal-gopher-index") == 0)
-        return GetIcon(file, icon_index, icon_index_len);
-    if (strcmp(name, "/internal-gopher-menu") == 0)
-        return GetIcon(file, icon_menu, icon_menu_len);
-    if (strcmp(name, "/internal-gopher-movie") == 0)
-        return GetIcon(file, icon_movie, icon_movie_len);
-    if (strcmp(name, "/internal-gopher-sound") == 0)
-        return GetIcon(file, icon_sound, icon_sound_len);
-    if (strcmp(name, "/internal-gopher-text") == 0)
-        return GetIcon(file, icon_text, icon_text_len);
-    if (strcmp(name, "/internal-gopher-unknown") == 0)
-        return GetIcon(file, icon_unknown, icon_unknown_len);
-    return -1;
+	LOG_printf("> GetIcon : Send %s\n",filename);
+	
+	file_ptr = fopen( filename,"w");
+	
+	if ( file_ptr == NULL )
+	{
+		LOG_printf("! GetIcon : Can not fopen <%s>\n",filename);
+	 return(-1L);
+	}
+	
+	fwrite( data, sizeof(UBYTE), size, file_ptr);	
+	
+	fclose(file_ptr);
+
+return((LONG)size);
 }
+
+/* ---          EOF                 --- */

@@ -1,827 +1,1142 @@
 /*
- * HTTP_GET.C - requÃªtes HTTP de CAB.OVL (V5.68, 19 janvier 2000)
+ * http_get.c
+ * Routine g‚n‚rale des requˆtes HTTP (GET, POST, HEAD).
  *
- * Source reconstituÃ© Ã  partir du binaire CAB.OVL (Pure C). Les noms
- * http_get, restore_module, get_url, get_url_info, post, get_url_if_modified,
- * get_url_cookie, get_url_ifmod_cookie et post_cookie viennent des chaÃ®nes
- * de trace. send_request, http_loop, ask_auth et hz200 sont des noms de
- * reconstitution. Le nom du module d'origine pour ask_auth est inconnu.
- * Non compilÃ© avec Pure C, Ã  vÃ©rifier.
+ * http_get ouvre la connexion, envoie la requˆte, lit l'en-tˆte et
+ * le corps de la r‚ponse, puis suit les redirections. Elle d‚lŠgue
+ * l'authentification, les cookies, les pages internes (setup,
+ * ic“nes), les rapports d'erreur et mailto aux autres modules.
+ * C'est le fichier central du module.
  *
- * Adresses : restore_module 0x10590, get_url_info 0x10788, get_url 0x107c2,
- * post 0x10800, get_url_if_modified 0x1083a, get_url_cookie 0x1087c,
- * get_url_ifmod_cookie 0x108c4, post_cookie 0x10910, ask_auth 0x1157c,
- * http_get 0x1232c, http_loop 0x12266, send_request 0x13226, hz200 0x1974a.
+ * Utilise : AUTHEN.H, B64ENCOD.H, CACHE_IP.H, CONFIG.H, COOKIE.H,
+ *   GET_URL.H, GLOBALS.H, HEADER.H, HTTP.H, JAVA.H, MAILTO.H, MAIN.H,
+ *   MY_HEAD.H, POST_URL.H, REPORT.H, RSC.H, SENDICON.H, SETUP.H, TCP.H,
+ *   TOOLS.H
+ * Utilis‚ par : COOKIE.C, GET_INFO.C, GET_URL.C, IF_MODIF.C, POST_URL.C
+ *
+ * Cr‚ation : 11/06/1998
+ * Auteur : Olivier Booklage
+ * Date : Janvier 2000 (V5.68)
+ * Licence : GNU General Public License version 2 ou ult‚rieure
+ * Notes d'origine : voir le commentaire qui suit.
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include "CONFIG.H"
-#include "CABOVL.H"
-#include "REQUEST.H"
-#include "HEADER.H"
-#include "LOG.H"
-#include "TCP.H"
-#include "GUI.H"
-#include "REPORT.H"
+/*#define _RUN_JAVA_ */
+/*#define WATCH_EXPECTED	*/	/* regarder le content-lenght */
+#define NO_WATCH_HEADER		/* laisser passer si pas de header */
+#define NO_ERASE_CACHE		/* Rapport d'erreur si le cache est vide */
+/* #define USE_TCP_WAIT_STATE */
+/*------------------------------------------------
+//
+// Module: http_get.c
+//
+// Objet : routine generale HTTP
+//
+// ToDo  : REVOIR LE CODAGE DES CARACTERES DE L'URI COMMME VCF X.gif = VCF%20X.gif ???
+//
+//
+//
+// Maintenance :
+//
+//     Auteur  : Olivier Booklage
+//     Version : V1.0
+//     Date    : 11/06/1998
+//		 Remarq. :
+//
+//								bug:si pas connection, ecrase le cache :(
+//
+// http_get: File <G:\WWWCACHE\a\00000702.html>=<-32> is not cached
+// sous TOS 4.0 il est evident que *.html soit -32 !!
+//
+	if ( file == 0L )					> a r‚gler !!!!!!!!!!!!!!!!!!!!!!!!
+		file = TMP_FILE;	+ ligne 565 (Fcreate)
+//
+//								Le source est encore trop gros, = d‚couper.
+//
+//
+//-----------------------------------------------*/
 
-#define BANNER "- ***************************************************\n"
 
-#define HTTP_GET 1
-#define HTTP_POST 2
+/* ---       Includes externes       -- */
 
-REQUEST request;                    /* 0x2578e */
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<string.h>
+#include	<time.h>
+#include	<ext.h>
+#include	<atarierr.h>
+#include	<tos.h>	/* Fdatime() */
+#include	<portab.h>
+#include	<logfile.h>
+#include	<upoint\memory.h>
+#include	<upoint\struct.h>
+#include	<tos.h>
+#include	<cab\module.h>
 
-short ask_offline = 1;              /* 0x21218, 1 : questionner si la liaison est hors ligne */
-short first_request = 1;            /* 0x2121a, 1 : la premiÃ¨re requÃªte n'a pas de rÃ©fÃ©rent */
-short lazy_events = 0;              /* 0x22436, 1 : Ã©vÃ©nements GEM seulement sans donnÃ©es reÃ§ues */
-short use_progress = 0;             /* 0x22438, 1 : signale l'avancement Ã  CAB */
+#include	<sting\transprt.h>		/* Pour  TESTABLISH */
 
-static char req_buf[0x800];         /* 0x2a506, requÃªte envoyÃ©e au serveur */
+#include	"globals.h"
+#include	"config.h"
+#include	"tcp.h"
+#include	"cache_ip.h"
+#include	"http.h"
+#include	"main.h"
+#include	"get_url.h"
+#include	"post_url.h"
+#include	"authen.h"
+#include	"my_head.h"
+#include	"header.h"
+#include	"cookie.h"
+#include	"mailto.h"
 
-extern char ck_tmpname[];           /* OVL.C */
-extern char auth_cred[], auth_host[], auth_b64[];   /* OVL.C */
-extern char user_agent[];           /* OVL.C */
-extern char *ck_current;            /* COOKIE.C */
 
-/* Appels GEMDOS et MiNT (bibliothÃ¨que Pure C). */
-extern long Supexec(long (*f)());
-extern long Fcreate(char *name, short attr);
-extern short Fclose(short handle);
-extern short Fdelete(char *name);
-extern long Fwrite(short handle, long count, void *buf);
-extern long Fxattr(short flag, char *name, void *xattr);    /* 0x1be4a, MiNT */
-extern long Fdatime(void *timeptr, short handle, short wflag);  /* 0x1bdf0 */
+#include	"rsc.h"
+#include	"setup.h"
+#include	"report.h"
 
-/* Autres modules de CAB.OVL. */
-extern int SendCookie(char *host, char *path, short max, char *out);    /* COOKIE.C */
-extern void ClearCookie(void);                      /* COOKIE.C */
-extern int CheckCookieDate(void);                   /* COOKIE.C */
-extern int SendSetup(REQUEST *req, char *name);     /* SETUP.C */
-extern int SendIcon(char *name, char *file);        /* SENDICON.C */
-extern void split_URL(char *url, REQUEST *req);     /* URL.C, 0x159f2 */
-extern int http_proxy_cfg(char *host, short *port, short size);     /* URL.C, 0x15d80 */
-extern char *skip_blanks(char *s);                  /* UTIL.C */
-extern int tobase64(char *in, char *out, short size);   /* MAILTO.C, 0x11624, 0 si erreur */
-extern int mailto(char *addr, char *ctype, char *post); /* MAILTO.C, 0x11768 */
-extern void dns_drop_last(void);                    /* TCP.C, 0x131d8 */
-extern char *escape_string(char *s);                /* MAILTO.C, 0x12212 */
-extern int mem_check(void);                         /* contrÃ´le mÃ©moire, 0x1c6fe */
+#include	"sendicon.h"
+#include	"b64encod.h"
+#include	"tools.h"
+#include	"java.h"
 
-/* ContrÃ´le mÃ©moire : le fichier et la ligne de l'appelant sont mÃ©morisÃ©s. */
-extern int NewMemBlk(MEMBLK *blk, long n, long size, char *file, long line);    /* 0x1c74c */
-extern void FreeMemBlk(MEMBLK *blk, char *file, long line);                     /* 0x1c880 */
+/* ---       Includes internes       -- */
 
-/* Lit l'horloge Ã  200 Hz du systÃ¨me, en mode superviseur. */
-static long hz200_read()
+#include "http_get.h"
+
+/* --- Constantes globales internes --- */
+
+/* --- Structures globales internes --- */
+
+REQUEST	request;
+
+/* --- Variables globales  internes --- */
+
+LOCAL	INT timeouts;						/* 3 valeurs, 1, 2 et 3 */
+
+/* Eviter de resoudre : Il faudrait faire un tableau avec 3 ou 4 adresse car sans proxy
+certaines pages utilisent quelques renvois sur d'autres sites */
+/*
+LOCAL UBYTE last_server[256];
+LOCAL uint32 last_addr;
+*/
+/* message d'alerte offline */
+
+LOCAL BOOLEAN alert_offline = TRUE;
+
+/* Certaines choses a initialiser */
+
+LOCAL BOOLEAN premier_lancement = TRUE;
+
+/* Authentification */
+
+/*
+LOCAL UBYTE *name_ptr;
+LOCAL UBYTE *password_ptr;
+*/
+
+LOCAL UBYTE http_proxy[256];
+LOCAL INT		http_proxy_port;
+
+/* Locations */
+
+/* static	UBYTE		new_location[256]; */
+/* static  UBYTE		new_file[1024]; */
+
+/* ---     Prototypage interne      --- */
+
+LOCAL int16 open_connection(char *server, int port, int TOS);
+LOCAL WORD HeaderIsReady( REQUEST *request, memdb *header);
+LOCAL long MakeHeadlist ( char *start, txtdb *lst, memdb *mem );
+LOCAL UBYTE *new_file_ptr;
+
+EXTERN UBYTE *inetoa( uint32 ip );
+
+/* ---         Fonctions            --- */
+
+/* Rapide patch pour pallier aux erreures de redirection */
+
+typedef struct Retour
 {
-    return *(long *)0x4baL;
+	UBYTE		location[256];		/* URL suivante si redirection */
+	UBYTE		file[1024];				/* filename du cache */
+	BOOLEAN redirection;			/* Si TRUE a rediriger */
+	LONG		value;						/* A retourner a CAB */
+	LONG		bytes_read;				/* Pour info */
+}RETOUR;
+
+LOCAL RETOUR	retour;
+
+LOCAL LONG	Reception(char *URL, char *content, char *enctype, char *file, int method, long lastmodified);
+
+LONG http_get(char *URL, char *content, char *enctype, char *file, int method, long lastmodified)
+{
+LONG ret;
+INT loop;
+
+	retour.redirection = TRUE;
+	retour.value = 0L;
+	retour.bytes_read = 0L;
+	*retour.location ='\0';
+
+	/* On elimine les CR et LF ‚ventuels */
+	
+	/*
+	Ca suffit pas !!! c'est pas la le probleme des retours a la ligne
+	dans le fichier log, il me faudrait la page HTML contenant l'URL
+	qui pose probleme....ou bug d'une version de CAB ?
+	
+	*/
+	
+	loop = 0;
+
+	while( *URL != '\0' )
+	{
+/*	if ( (*URL!=0xA) && (*URL!=0xD) ) test */
+		{
+			retour.location[loop++] = *URL;
+		}
+		if( loop > 255 ) break;
+		URL++;
+	}
+	
+	retour.location[loop] = '\0';
+
+/*strncat( retour.location, URL, 256 );*/
+
+	*retour.file ='\0';
+	strncat( retour.file, file, 1024);
+
+	while( retour.redirection == TRUE )
+	{
+
+LOG_printf("~ Call Reception for <%s>\n", retour.location);
+
+		ret = Reception( retour.location, content, enctype, retour.file, method, lastmodified);
+		
+		/* En cas de redirection, on passe en GET sans parametre */
+
+		content = "";
+		enctype = "";
+		if ( method == POST_METHOD )
+			method = GET_METHOD;
+
+	}
+
+	LOG_printf("~ END : return_code (%ld) for file contain (%ld) bytes\n", retour.value, retour.bytes_read);
+
+/*Fdelete(TMP_FILE);	*//* C'est vraiment sale... */
+
+ if ( retour.bytes_read > 0L )
+ 	browser->msg_status( STATUS_FORMATTING_TEXT , 0L);
+	
+return( ret );
 }
 
-long hz200()
+LOCAL LONG	Reception(char *URL, char *content, char *enctype, char *file, int method, long lastmodified)
 {
-    return Supexec(hz200_read);
+
+int16 x;
+
+INT		readed=0;
+INT		ret;
+INT		bytes_available;
+INT		eof=0;
+INT		no_data;
+
+LONG	bytes_read=0L;
+LONG	old_bytes_read=0L;
+LONG	return_code=0L;
+LONG	lret=0L;
+
+time_t timeout;
+time_t call_cab;
+
+DOSTIME filetime;
+
+struct tm *urltime;
+
+BOOLEAN proxy;
+
+memdb header=_MEMDB;
+/* memdb name_pass=_MEMDB; */
+/* memdb authentification=_MEMDB; */
+
+XATTR xattr;
+LONG test;
+
+UBYTE *p;
+
+
+							if ( retour.redirection == FALSE )
+							{
+								*retour.file = '\0';
+								strncat(retour.file, file, 1023);
+							}
+							retour.redirection = FALSE;
+
+
+/*
+
+- 02 Apr 20:20:42 OVL  URL   : <javascript:benoitlive()>
+est tres mal d‚coup‚ par split_url !
+
+*/
+
+	LOG_printf("- URL   : <");
+	LOG_puts("-",URL);
+	LOG_puts("-",">\n");
+
+
+/*
+
+ Test car parfois URL tronqu‚e, par une redirection ??
+ ou bien si elle contient des % les LOG_printf ou printf les
+ d‚truisent ???? non, dans les forms avec parametre de plus de 80 car#
+ CAB transmet tronqu‚ ? ( a verifier avec weblight )
+ 
+ toujours des problemes avec VCF X.gif faut-t'il coder en 
+ 
+ VCF%20X.gif => fait plus bas !!
+
+*/
+
+/*	mailto ----------------------------------------------------------- */
+
+/* Il faudrait transmettre le type */
+
+	if ( strnicmp( URL, "mailto:", 7 ) == SUCCESS )
+	{
+		return( my_mailto( skipwhite(&URL[7]), enctype, content) );
+	}
+
+	/* s‚curit‚ ? mais en fait il faudra trouver une solution
+	   car file = 0L est vraiment utilis‚ par get_info() donc
+	   ce fichier est vraiment cr‚‚ !! ( mais ou ? )
+	*/
+	
+/*if ( file == 0L ) */
+	if ( *file == '\0' )
+		file = TMP_FILE;
+
+	request.tcp_handle = -666;
+	request.URL = URL;
+	request.content = content;
+	request.enctype = enctype;
+	request.filename = file;
+	request.methode = method;
+	request.cab_date = lastmodified;
+	
+	if ( premier_lancement == TRUE )
+	{
+		*request.stock_URL = '\0';
+		*request.last_URL = '\0';
+		premier_lancement = FALSE;
+	}
+	else
+	{
+		*request.last_URL = '\0';
+		strncat( request.last_URL, request.stock_URL, 1024 );
+	}
+	
+	/* On stocke */
+
+	*request.stock_URL = '\0';
+	strncat( request.stock_URL, request.URL, 1024);
+	p = strchr( request.stock_URL, '?');
+
+
+	if ( p != NULL )	*p='\0';
+
+	/*
+	p = strrchr( last_URL, '/');
+	if ( p != NULL )	*(p+1)='\0';
+	*/
+
+
+	LOG_printf("~ Write last URL <%s>.\n", request.stock_URL);
+	LOG_printf("~ Read last URL  <%s>.\n", request.last_URL);
+
+	/*
+	
+	 Sous TOS wwwcache/c/001244.html retourne une erreure, normal,
+	 mais pas sous MagiC si wwwcache/c/001244.htm existe.
+	 Donc il est pas si simple de savoir si le fichier est d‚j…
+	 dans le cache.
+	 
+	*/
+
+	if ( (test=Fxattr( 0, file, &xattr )) < 0L )
+	{
+		request.cache_exist = FALSE;
+		LOG_printf("~ http_get: File <%s>=<%ld> is not cached\n", file, test);
+	}
+	else
+	{
+		request.cache_exist = TRUE;
+		LOG_printf("~ http_get: File <%s>=<%ld> is cached\n", file, test);
+	}
+
+
+/*	internal message ----------------------------------------------------------- */
+
+	if ( strnicmp( request.URL, "http://cab.ovl", 14 ) == SUCCESS )
+	{
+		return_code = SendSetup( &request, &request.URL[15]);
+		goto end_no_free_memory;
+	}
+
+/*	on/offline ----------------------------------------------------------- */
+
+	if ( config.online == FALSE )
+	{
+		browser->msg_error(NETWORK_DOWN);
+		if ( alert_offline == TRUE )
+		{
+			ret =  my_form_alerte("Offline", ChaineAlerte(A_OFFLINE) );
+		}
+		else ret = 1; /* offline */
+
+		if ( ret == 2 )	/* online */
+		{
+			config.online = TRUE;
+		}
+		else
+		{
+			if ( ret == 3 )	alert_offline = FALSE; /* nevermind */
+/*		return_code = NETWORK_DOWN;	*//* c'est une valeur de : 	browser->msg_error(); !!! */
+			return_code = NETWORK_DOWN;	/* c'est une valeur de : 	browser->msg_error(); !!! */
+			goto end_no_free_memory;
+		}
+
+	}
+
+/*	split URL ----------------------------------------------------------- */
+
+	return_code = 0L;
+
+	split_URL(URL, &request);
+	*request.true_server=0;
+	strncat( request.true_server, request.server,255);
+
+	LOG_printf("- Server: <%s>\n", request.true_server);
+	LOG_printf("- URI   : <%s>\n", request.URI);
+
+/*	internal icones ----------------------------------------------------------- */
+
+	if ( (bytes_read=SendIcon(request.URI,file)) > 0L )
+	{
+		return_code = 0;
+		goto end_no_free_memory;
+	}
+
+/*	header memory ----------------------------------------------------------- */
+
+	/* Pas de m‚moire pour le header */
+	
+	if( !NewMemBlk(&header,TCP_BUFFER+1,sizeof(UBYTE)) ) /* STiK : 1024 bytes */
+	{
+		browser->msg_error(NO_MEMORY);
+		ReportRequestIndex( &request, request.filename, &request.file_handle, REPO_LOW_MEMORY);
+		goto end_no_free_memory;
+	}
+
+
+/*	----------------------------------------------------------- */
+
+	header.used = 0L;
+
+/*	
+
+	name_pass.beg		= name_password;
+	name_pass.len		=	MAX_STR;
+	name_pass.used	=	strlen( name_password );
+	
+	authentification.beg=	authentification_coded;
+	authentification.len=	2*(MAX_STR);
+	authentification.used= strlen( authentification_coded );
+
+*/
+
+Start:
+
+/*	proxy ----------------------------------------------------------- */
+
+	proxy=http_proxy_cfg(http_proxy, 256, &http_proxy_port);
+
+	if (proxy==TRUE)
+	{
+		LOG_printf("- Proxy : <%s>:(%d)\n", http_proxy, http_proxy_port);
+		*request.server=0;
+		strncat(request.server, http_proxy, 256);
+		request.port=http_proxy_port;
+	}
+
+/*
+
+Le probleme : si resolve (open_connection) prend du temps, on se trouve
+apres deja en timeout juste apres,
+il faudrait le fixer apres le resolve (?)
+
+*/
+
+	timeouts = 1;
+	timeout	=clock()+config.timeout*CLK_TCK;
+	
+	request.tcp_handle = open_connection(request.server, request.port, 0);
+
+	if ( request.tcp_handle < 0 )
+	{
+		if ( proxy == TRUE )
+		{
+			split_URL(URL, &request);
+			request.tcp_handle = open_connection(request.server, request.port, 0);
+			proxy = FALSE;
+		}
+		
+		if ( request.tcp_handle < 0 )
+		{
+			/* Il faudrait faire en fonction de l'erreure */
+			browser->msg_error(CANNOT_RESOLVE);
+
+			/* On ne fait un rapport que si le cache est vide !!! */
+			/* En fait le rapport doit etre fait pour presque toutes */
+			/* les erreures, sauf can't resolve (deconnect‚) et */
+			/* quelques autres... */
+
+#ifdef NOTDEF
+
+
+	#ifndef NO_ERASE_CACHE
+		if ( request.cache_exist == FALSE )
+			ReportRequest( &request, X_get_err_text(request.tcp_handle) );
+	#endif
+			if ( (request.tcp_handle != E_UNREACHABLE) && (request.tcp_handle !=  E_CANTRESOLVE) )
+			{
+				ReportRequestText( &request, X_get_err_text(request.tcp_handle) );
+			}
+
+#endif
+
+retour.value = return_code = EFILNF;	/*EACCDN pas marche?*/
+retour.bytes_read = bytes_read = 0L;
+
+
+			goto end_free_memory;
+		}
+	}
+
+	ret = Send_Header( &request, proxy );
+
+	if ( ret != 0 )
+	{
+		browser->msg_error(NETWORK_ERROR);
+		ReportRequestText( &request, X_get_err_text( ret ) );
+		goto end_free_memory;
+	}
+		
+/*	R‚ception ----------------------------------------------------------- */
+
+	call_cab=clock()+(config.gem/1000)*CLK_TCK;		/* appel CAB toutes les secondes */
+
+	/* ---------------------------------------------------------------------*/
+	/*  R‚ception  */
+	/* ---------------------------------------------------------------------*/
+
+	request.status = WAITING_HEADER;
+	header.used = 0L;
+	bytes_read = 0L;
+	old_bytes_read = 0L;
+	readed = 0;
+	no_data = 3;	/* d‚compte imm‚diat pendant l'attente du header */
+	request.file_handle = -1;
+	eof = 0;
+	
+	while ( eof == 0 )
+	{
+
+		bytes_available=X_CNbyte_count(request.tcp_handle);
+
+		if ( bytes_available < 0  )
+			LOG_printf("~ CNbyte_count() returns <%s>\n", X_get_err_text(bytes_available));
+	
+	/* ---------------------------------------------------------------------*/
+	/*  Octets disponibles */
+	/* ---------------------------------------------------------------------*/
+
+		if (bytes_available > 0)
+		{
+		INT take = min ( bytes_available, (INT)(header.len - header.used -1) );
+
+			timeout=clock()+config.timeout*CLK_TCK; /* timeout 60s after last char */
+
+			no_data = 0;
+
+			LOG_printf("~ bytes_available = <%d>, take = <%d> (header.len - header.used) = <%ld>\n", bytes_available, take, header.len - header.used);
+			
+			if ( (header.used + take) <= TCP_BUFFER ) /* securit‚ */
+			{
+				readed=X_CNget_block(request.tcp_handle, (UBYTE*)header.beg+header.used, take );
+			}
+			
+			/* Header trop gros pour memdb header */
+			
+			else
+			{
+				browser->msg_error(BAD_PACKET);
+				ReportRequestIndex( &request, request.filename, &request.file_handle, REPO_BIG_HEADER);
+				eof = 2;
+			}
+
+			if ( readed != 0 )
+		 		LOG_printf("~ X_CNget_block = <%d> bytes read\n", readed);
+			
+	/* ---------------------------------------------------------------------*/
+	/*  Octets lus  */
+	/* ---------------------------------------------------------------------*/
+
+			if( readed > 0)
+			{
+
+				header.used += readed;
+				bytes_read += header.used;
+
+	/* ---------------------------------------------------------------------*/
+	/*  R‚ception Entete */
+	/* ---------------------------------------------------------------------*/
+
+				if( request.status == WAITING_HEADER )
+				{
+
+					request.status = HeaderIsReady( &request, &header);	/* Status HTTP ou perso */
+
+SmallLoop :
+
+					if ( (request.status == 200)
+					 || (request.status == 201)
+					 || (request.status == 301)
+					 || (request.status == 302)
+					  )
+					{
+
+						/* vider l'ancien fichier cache */
+
+						/* BuG Fcreate converti en lowercase ? */
+
+						request.file_handle=(INT)Fcreate(request.filename, 0);
+						
+						/* On ne peut pas creer le fichier pour CAB */
+
+						if (request.file_handle < 0 )
+						{
+							LOG_printf("! Error, request.file_handle = <%d>\n", request.file_handle );
+						 /*
+						  On essaye EINTRN bien qu'il se fasse pas partie des
+						 	erreures. ( il est dans atarierr.h )
+						 	A noter que -33 marche.
+					 	 */
+							browser->msg_error(EINTRN);
+							ReportRequestIndex( &request, request.filename, &request.file_handle, REPO_CACHE_FILE);
+							eof = 2; /* ? au pif */
+						}
+
+						bytes_read = header.used;
+
+						if ( request.content_length > 0L )
+						{
+
+/* Pour cabdload faut-t'il le mettre ici ou attendre les premiers bytes ? */
+
+							browser->msg_status(STATUS_DATALENGTH, request.content_length);
+							/* Nouveau : pour cabdload ?? */
+/*						browser->aes_events(50); */
+						}
+
+
+/*
+
+ dans quel ordre le mettre : ?
+ ici c'est pas mal, ca commence tjrs par 0 byte/sec, donc
+ pas tres joli non ? 
+ 
+*/
+						if ( header.used != 0L )
+						{
+							/* On ne peut pas ‚crire dans le fichier pour CAB */
+							if( (lret=Fwrite(request.file_handle, header.used, (UBYTE*)header.beg)) < 0 )
+							{
+								LOG_printf("! Fwrite error <%ld>\n", lret);
+								browser->msg_error(EINTRN);
+								ReportRequestIndex( &request, request.filename, &request.file_handle, REPO_CACHE_WRITE);
+								header.used = 0L;
+								eof = 2; /* ? au pif */
+							}
+							header.used = 0L;
+						}
+
+					} /* HeaderIsReady WAITING_DATA*/
+
+
+					else if ( request.status == 304 )
+					{
+						LOG_printf("~ File not modified\n");
+						return_code = 0L;
+						eof = 2;
+					}
+
+					/* Demande d'authentification */
+						
+					else if ( request.status == 401 )
+					{
+						LOG_printf("~ Document protected\n");
+						if ( RequestAuthentification( &request ) == TRUE )
+						{
+							if ( request.file_handle > 0 )
+							{
+								Fclose(request.file_handle);
+								request.file_handle = -1;
+							}
+							Fdelete(request.filename);
+							X_TCP_close(request.tcp_handle, TCP_IMMEDIATE);
+							timeouts = 1;
+							timeout	=clock()+config.timeout*CLK_TCK;
+							goto Start;
+						}
+
+						LOG_printf("~ Authentification aborted\n");
+						Fdelete( request.filename );
+						return_code = EACCDN;
+						eof = 2;
+					
+					}
+					
+					/* low memory for header */
+					
+					else if ( request.status == HEADER_LOW_MEMORY )
+					{
+						browser->msg_error(NO_MEMORY);
+						ReportRequestIndex( &request, request.filename, &request.file_handle, REPO_LOW_MEMORY);
+						eof = 2;
+					}
+					
+					/* bad header format */
+					/*
+
+						Certains serveurs ne renvoi pas de header HTTP :(
+					
+					*/
+					
+					else if ( request.status == HEADER_BAD_FORMAT )
+					{
+						browser->msg_error(USERBREAK);
+#ifdef NO_WATCH_HEADER
+/* de tres longues URL peuvent crasher la boite de dialogue : */
+/*					my_form_alerte( "Protocol ERROR","[1][%s|The document do no contain HTTP header | is very bad server error.|Please contact is administartor.][ Will do ]", URL); */
+						LOG_printf("! HTTP missed by server administrator, get raw data.\n");
+#else
+						ReportRequestIndex( request.filename, &request.file_handle, REPO_BAD_HEADER);
+						eof = 2;
+#endif
+						request.status = 200;
+						goto SmallLoop;
+					}
+					
+					/* Autres erreures HTTP */
+					
+					else if ( request.status != WAITING_HEADER ) /* erreur HTTP */
+					{
+						if ( *request.content_type == '\0' )
+						{
+							browser->msg_error(EFILNF);
+							ReportRequestText( &request, request.http_line);
+							eof = 2;
+						}
+						else
+						{
+							request.status = 200;
+							goto SmallLoop;
+						}
+						
+					}
+				}
+
+	/* ---------------------------------------------------------------------*/
+	/*  R‚ception donn‚es  */
+	/* ---------------------------------------------------------------------*/
+
+				/* Header pass‚, des donn‚es arrivent */
+				
+				else
+				{
+					/* erreur ‚criture fichier temporaire */
+					
+					if ( (lret=Fwrite(request.file_handle, header.used, (UBYTE*)header.beg)) < 0L )
+					{
+						LOG_printf("! Fwrite error <%ld>\n", lret);
+						browser->msg_error(EINTRN);
+						ReportRequestIndex( &request, request.filename, &request.file_handle, REPO_TMP_WRITE);
+						eof = 2; /* ? au pif */
+					}
+					header.used=0L;	/* pret a recevoir */
+
+					if ( ( bytes_read > 0) &&	( (request.status == 200) || (request.status == 201) )	 )
+					{
+						old_bytes_read = bytes_read;
+						if( request.status != WAITING_HEADER  )
+						{
+							browser->msg_status(STATUS_RECEIVING_DATA, bytes_read);
+						}
+					}
+				}
+			}
+
+	/* ---------------------------------------------------------------------*/
+	/*  Erreur sur le nombre d'octets lus (readed)  */
+	/* ---------------------------------------------------------------------*/
+
+			else if ( readed == E_EOF )	/* 1er test, en fait le EOF n'est pas lu ici  mais plus bas ! */
+			{
+
+				LOG_printf("~ X_CNget_block:EOF\n");
+#ifdef WATCH_EXPECTED
+				if ( ( request.content_length > 0L) && ( bytes_read > 0L ) )
+				{
+					if ( request.content_length != bytes_read )
+					{
+						LOG_printf("! error expect <%ld> received <%ld> bytes\n", request.content_length, bytes_read );
+						browser->msg_error(BAD_PACKET);
+						ReportRequestIndex( request.filename, &request.file_handle, REPO_BAD_NUMBER);
+					}
+				}
+#endif
+				eof=1;
+			}
+
+			/* STinG retourne une erreur */
+			
+			else if ( readed < 0 )
+			{
+				browser->msg_error(NETWORK_ERROR);
+				ReportRequestText( &request, X_get_err_text(readed) );
+				eof=3;
+			}
+
+		}	/* bytes_available > 0 */
+		
+
+	/* ---------------------------------------------------------------------*/
+	/*  Erreur sur le nombre d'octets disponibles (bytes_available) */
+	/* ---------------------------------------------------------------------*/
+
+		else if ( bytes_available == E_RRESET )
+		{
+			LOG_printf("~ bytes_available==E_RRESET, do nothing..\n");
+
+				/*
+				 => ca ne resoud pas le probleme sur certains
+				 serveurs, mais c'est bien de ne rien faire.
+			 */
+		}
+		else if ( bytes_available == E_EOF )	/* Le test est toujours ici ! */
+		{
+			LOG_printf("~ bytes_available:EOF\n");
+
+			if ( (bytes_read > old_bytes_read) && ( bytes_read > 0) && ((request.status == 200) || (request.status == 201)) )
+			{
+				browser->msg_status(STATUS_RECEIVING_DATA, bytes_read);
+			}
+
+#ifdef WATCH_EXPECTED
+			if ( ( request.content_length > 0L) && ( bytes_read > 0L ) )
+			{
+				if ( request.content_length != bytes_read )
+				{
+					LOG_printf("! error expect <%ld> received <%ld> bytes\n", request.content_length, bytes_read );
+					browser->msg_error(BAD_PACKET);
+					ReportRequestIndex( request.filename, &request.file_handle, REPO_BAD_NUMBER);
+				}
+			}
+#endif
+			eof=1;
+		}
+
+		/* Erreur sur la connexion ex:refus‚ */
+		
+		else if ( (bytes_available != E_NODATA) && ( bytes_available != E_NORMAL ))
+		{
+			browser->msg_error(NETWORK_ERROR);
+			bytes_available=ReportRequestText( &request, X_get_err_text(bytes_available) );
+			eof=3;
+		}
+
+
+	/* ---------------------------------------------------------------------*/
+	/*  Proc‚dures de timer */
+	/* ---------------------------------------------------------------------*/
+
+	/* ************ Temps pour CAB + touche STOP + touche ESC ************* */
+
+		if ( clock() > call_cab )
+		{
+
+			if( (sting == TRUE) && (bytes_available != 0) )
+				goto Step1;
+
+			if ( browser->aes_events(config.timer) == -1L )	/* bouton STOP ou touche Esc */
+			{
+				LOG_printf("! aes_events : STOP icon or Esc key pressed\n");
+				/* s'affiche pas :( (toujours ) */
+				browser->msg_error(USERBREAK); /* histoire de donner quelque chose */
+				if ( request.file_handle > 0 )
+				{
+					Fclose( request.file_handle );
+					request.file_handle = -1;
+				}
+				Fdelete( request.filename );
+				bytes_read = 0;
+				return_code = ERROR;
+				eof=4;
+			}
+
+			call_cab=clock()+(config.gem/1000)*CLK_TCK;		/* appel CAB toutes les secondes */
+
+			if ( (no_data == 3) && (eof==0) )
+			{
+				browser->msg_status(STATUS_WAITINGFORDATA,(timeout-clock())/200);
+			}
+			else if ( no_data < 3 )				no_data ++;
+
+		}
+
+Step1:
+
+	/* ***************************** Timeout ****************************** */
+		
+		if ( clock() > timeout )
+		{
+			LOG_printf("~ Timeout!\n");
+			browser->msg_error(CONNECTION_FAILED);
+			ReportRequestIndex( &request, request.filename, &request.file_handle, REPO_NO_REPONSE);
+			eof=4;
+		}
+
+	} /* while eof == 0 */
+
+
+/*	TCP_close ----------------------------------------------------------- */
+
+
+	/* ---------------------------------------------------------------------*/
+	/*  Fin de boucle de r‚ception  */
+	/* ---------------------------------------------------------------------*/
+
+	/* ----- Fermeture de la connexion ----- */
+	
+	/* timeout or worse*/
+	/*	if (eof>1) on ferme quand meme ! */
+	
+	if ( request.tcp_handle != -666 )
+	{
+		x = (int16)X_TCP_close(request.tcp_handle, TCP_IMMEDIATE);
+		LOG_printf("~ TCP_close() returns <%s>\n", X_get_err_text(x));
+	}
+
+/*	File close ----------------------------------------------------------- */
+
+	/* fixer le date du fichier NE RIEN ECRIRE APRES !! */
+
+	if( request.file_handle > 0 )
+	{
+		if (request.last_modified > 0	)
+		{
+
+		/* Parceque GEMDOS ne gere que des nombre paire de secondes
+		on incremente d'une seconde la date du fichier*/
+
+			request.last_modified++;	/* TOS is 2 sec based */
+			
+			urltime=localtime(&request.last_modified);/* gmtime corrige GMT (-1h) */
+		}
+		else
+			urltime=localtime(&request.date);
+	
+		filetime.time=(urltime->tm_sec/2);
+		filetime.time+=(urltime->tm_min)<<5;
+		filetime.time+=(urltime->tm_hour)<<11;
+		filetime.date=(urltime->tm_mday);
+		filetime.date+=((urltime->tm_mon)+1)<<5;
+		filetime.date+=((urltime->tm_year)-80)<<9;
+							
+		Fdatime(&filetime, request.file_handle, 1);
+		
+		x = Fclose(request.file_handle);
+		
+		if( x < 0 )
+		{
+			/* Normalement impossible car erreur donc on essaye: */
+			request.file_handle = -1;
+			browser->msg_error(EINTRN);
+			ReportRequestIndex( &request, request.filename, &request.file_handle, REPO_TMP_CLOSE);
+		}
+		else /* Bien ferm‚ */
+		{
+			request.file_handle = -1;
+		}
+	}
+
+/*	Free memory ----------------------------------------------------------- */
+
+end_free_memory:
+
+	FreeMemBlk(&header);
+
+/*	Java ----------------------------------------------------------- */
+
+#ifdef _RUN_JAVA_
+
+	RunJavaPlugIn( request.filename );
+
+#endif
+
+/*	Location ----------------------------------------------------------- */
+
+	/* --------------------------------------------------------------------------*/
+	/* Lancer une autre location si l'url est renvoy‚e !! tout lib‚rer avant ici */
+	/* --------------------------------------------------------------------------*/
+
+/*
+ !! Si request.location ne commence pas par http:// il faut l'ajouter
+*/
+	
+	if ( (strlen(request.location)>0) && (eof == 1))	/* Pas d'erreur */
+	{
+		*retour.location = '\0';
+		if ( strnicmp( request.location, "http://", 7) != SUCCESS )
+		{
+			strncat ( retour.location, "http://", 255);
+			strncat ( retour.location, request.true_server, 255);
+			if ( request.location[0] != '/' )
+				strncat ( retour.location, "/", 255);
+		}
+		strncat ( retour.location, request.location, 255);
+		LOG_printf("~ New Location <");
+		LOG_puts("~", retour.location);
+		LOG_puts("~", ">\n");
+
+		/* Il faut faire quelque chose si CAB ne donne pas de fichier ! */
+
+		if (browser->new_url( retour.location, &new_file_ptr)==0)
+		{
+
+			*retour.file = '\0';
+			strncat(retour.file, new_file_ptr,1023);
+
+			if ( *retour.file == '\0' )	/* S‚curit‚ */
+			{
+				strncat(retour.file, TMP_FILE,1023);			
+			}
+		}
+		else
+		{
+			LOG_printf("! browser can not give a new filename, set as old <%s>\n", retour.file);
+			Fdelete(request.filename);
+		}
+
+		retour.redirection = TRUE;
+		
+	}
+	else
+	{
+		retour.redirection = FALSE;
+	}
+
+/*	End ----------------------------------------------------------- */
+	
+end_no_free_memory:
+
+	if ( return_code != 0 ) /* si il y a eu probleme, on efface le cache */
+		Clear_Last_Host();
+
+	ClearCookie();
+
+/*
+
+Avec une redirection on repasse par la....hummm pas bien !!
+
+ex : 
+
+! 15 Nov 02:33:58 OVL  Run PLUG-IN <U:\INTERNET\CAB\modules\plug-in\java.ovl> error <-34>
+> 15 Nov 02:33:58 OVL  ClearCookie
+~ 15 Nov 02:33:58 OVL  END : return_code (0) for file contain (1331) bytes
+> 15 Nov 02:33:58 OVL  ClearCookie
+~ 15 Nov 02:33:58 OVL  END : return_code (0) for file contain (302) bytes
+> 15 Nov 02:33:58 OVL  ClearCookie
+~ 15 Nov 02:33:58 OVL  END : return_code (0) for file contain (275) bytes
+
+Ca peut etre un danger sur deux redirection avec browser->new_url() ??
+
+=> OUI si le fichier est deja dans le cache
+
+*/
+
+
+	retour.value = return_code;
+	retour.bytes_read = bytes_read;
+
+/* 0 si ok, sinon errno */
+
+return( return_code );
 }
 
-/* ArrÃªte l'application du module et remet CAB dans son Ã©tat d'origine. */
-int restore_module()
+/* ---------------------------------------------------------------------- */
+
+
+
+/** Resolves server into an IP address, then opens a connection to port
+	of server, with TOS (magic variable, which should always be 0, ask
+	Steve Adam about it). It returns a connection handle for following
+	calls. If it's smaller than 0 then it's an error. */
+
+LOCAL int16 open_connection(char *server, int port, int TOS)
 {
-    trace(BANNER);
-    trace("> restore_module\n");
-    cab->proxy = 0;                 /* le binaire y place la table de proxy statique en 0x24586 */
-    ck_current = 0;
-    CheckCookieDate();
-    gem_cleanup();
-    log_end();
-    log_close();
-    mem_check();
-    return 0;
+int16 x, cn;
+uint32 addr;
+	
+	LOG_printf("> open_connection server <%s> port <%i> TOS <%i>\n", server, port, TOS);
+
+	x = my_resolver( server, &addr );
+	if (x<0)
+	{
+		LOG_printf("! Resolve <%s> returns <%s>\n", server, X_get_err_text(x));
+		return(x);
+	}
+
+	browser->msg_status(STATUS_CONNECTING_HOST, 0);
+	
+	cn=X_TCP_open(addr, port, TOS, TCP_BUFFER);
+
+	if ( iconnect == TRUE )
+		browser->msg_status(STATUS_CONNECTING_HOST, 0);
+
+	if (cn<0)
+	{
+		LOG_printf("! TCP_open <%s> returns <%s>\n", server, X_get_err_text(cn));
+		Clear_Last_Host();
+		return(cn);
+	}
+
+#ifdef USE_TCP_WAIT_STATE	/* on a des blocages */
+
+	x = X_TCP_wait_state(cn, TESTABLISH, 1);
+	if (x<0)
+	{
+		LOG_printf("~ TCP_wait_state() returns: %s\n", X_get_err_text(x));
+		X_TCP_close(cn, TCP_IMMEDIATE);
+		return(x);
+	}
+
+#endif
+
+return(cn);
 }
 
-/* Interface demandÃ©e par CAB mais non gÃ©rÃ©e : renvoie -1. */
-int get_url_info(a, b, c, d)
-long a;
-long b;
-long c;
-long d;
-{
-    trace(BANNER);
-    trace("> get_url_info\n", a, b, c, d);
-    return -1;
-}
-
-/* Demande l'identifiant et le mot de passe de l'utilisateur pour le serveur
-   de la requÃªte, les code en base64 et les mÃ©morise. Renvoie 1 si l'utilisateur
-   valide, 0 sinon. */
-int ask_auth(req)
-REQUEST *req;
-{
-    char *a;
-    char *b;
-
-    auth_cred[0] = 0;
-    auth_b64[0] = 0;
-    auth_host[0] = 0;
-
-    if (ask_authentification(req->host, &a, &b) != 7)
-    {
-        trace("~ User do not use AUTH_VALID button\n");
-        return 0;
-    }
-    if (tobase64(auth_cred, auth_b64, 0x100) == 0)
-    {
-        trace("! ERROR in Codebase64\n");
-        return 0;
-    }
-    strncat(auth_host, req->host, 0x7e);
-    trace("~ Restricted access on  = <%s>\n", auth_host);
-    trace("~ Authentification      = <%s>\n", auth_cred);
-    trace("~ Coded on base64       = <%s>\n", auth_b64);
-    return 1;
-}
-
-/* Construit la requÃªte HTTP 1.0 et l'envoie. via_proxy vaut 1 si le serveur
-   contactÃ© est un proxy : la requÃªte porte alors l'URL complÃ¨te. Renvoie 0,
-   ou le code d'erreur de l'envoi (la connexion est alors fermÃ©e). */
-static short send_request(req, via_proxy)
-REQUEST *req;
-short via_proxy;
-{
-    short r = 0;
-    char date[50];
-    char len[24];
-    char *tok;
-    time_t t;
-
-    trace("~ Creating header...\n");
-    t = (time_t)req->ifmod;
-    strftime(date, 50, "%a, %d %b %Y %X GMT", gmtime(&t));
-
-    req_buf[0] = 0;
-    if (req->method == HTTP_GET)
-        strncat(req_buf, "GET ", 0x7ff);
-    else if (req->method == HTTP_POST)
-        strncat(req_buf, "POST ", 0x7ff);
-    else
-        strncat(req_buf, "HEAD ", 0x7ff);
-
-    /* Les espaces de l'adresse deviennent %20. */
-    tok = strtok(via_proxy == 1 ? req->url : req->path, " ");
-    while (tok != 0)
-    {
-        strncat(req_buf, tok, 0x7ff);
-        tok = strtok(0, " ");
-        if (tok != 0)
-            strncat(req_buf, "%20", 0x7ff);
-    }
-
-    strncat(req_buf, " HTTP/1.0\r\n", 0x7ff);
-    strncat(req_buf, "Host: ", 0x7ff);
-    strncat(req_buf, req->host, 0x7ff);
-    strncat(req_buf, "\r\n", 0x7ff);
-    strncat(req_buf, "Pragma: no-cache\r\n", 0x7ff);
-    strncat(req_buf, "Cache-Control: no-cache\r\n", 0x7ff);
-    strncat(req_buf, "User-Agent: ", 0x7ff);
-    strncat(req_buf, user_agent, 0x7ff);
-    strncat(req_buf, "\r\n", 0x7ff);
-    strncat(req_buf, "Accept: */*\r\n", 0x7ff);
-
-    if (req->ifmod > 42 && *cab->reload == 0)
-    {
-        strncat(req_buf, "If-Modified-Since: ", 0x7ff);
-        strncat(req_buf, date, 0x7ff);
-        strncat(req_buf, "\r\n", 0x7ff);
-    }
-
-    if (req->method == HTTP_POST)
-    {
-        strncat(req_buf, "Content-Length: ", 0x7ff);
-        sprintf(len, "%ld", (long)strlen(req->post));
-        strncat(req_buf, len, 0x7ff);
-        strncat(req_buf, "\r\n", 0x7ff);
-        strncat(req_buf, "Content-type: ", 0x7ff);
-        strncat(req_buf, req->ctype, 0x7ff);
-        strncat(req_buf, "\r\n", 0x7ff);
-    }
-
-    if (req->last_read[0] != 0)
-    {
-        strncat(req_buf, "Referer: ", 0x7ff);
-        strncat(req_buf, req->last_read, 0x7ff);
-        strncat(req_buf, "\r\n", 0x7ff);
-    }
-
-    if (strcmp(auth_host, req->host) == 0)
-    {
-        strncat(req_buf, "Authorization: Basic ", 0x7ff);
-        strncat(req_buf, auth_b64, 0x7ff);
-        strncat(req_buf, "\r\n", 0x7ff);
-    }
-
-    SendCookie(req->host, req->path, 0x7ff, req_buf);
-    strncat(req_buf, "\r\n", 0x7ff);
-
-    trace("~ Send my header: <\n");
-    trace_str("~", req_buf);
-    trace_str("~", ">\n");
-
-    if (use_progress == 1)
-        (*cab->progress)(5L, 0L);
-    r = X_TCP_send(req->handle, req_buf, (short)strlen(req_buf));
-    if (use_progress == 1)
-        (*cab->progress)(3L, 0L);
-
-    if (r == 0 && req->method == HTTP_POST)
-    {
-        r = X_TCP_send(req->handle, req->post, (short)strlen(req->post));
-        trace("~ Sending form <%s>, <%d> bytes using the POST method : <\n%s>\n",
-              escape_string(req->ctype), (int)strlen(req->post), req->post);
-    }
-    if (r != 0)
-    {
-        trace("! TCP_send() to <%s> returns: <%s>\n", req->server, X_get_err_text(r));
-        X_TCP_close(req->handle, 1);
-    }
-    return r;
-}
-
-/* Fait une requÃªte HTTP et Ã©crit la rÃ©ponse dans le fichier de la requÃªte.
-   Renvoie 0 si le document est reÃ§u, sinon un code d'erreur nÃ©gatif. Si le
-   serveur redirige, request.redirect_flag et request.redirect dÃ©crivent la
-   nouvelle requÃªte. Les codes passÃ©s Ã  cab->event sont des codes d'Ã©tat de CAB. */
-long http_get(url, post, method, ifmod, ctype, file)
-char *url;
-char *post;
-short method;
-long ifmod;
-char *ctype;
-char *file;
-{
-    MEMBLK blk;
-    HEADERBUF *hb = (HEADERBUF *)&blk;
-    char xattr[0x34];
-    short words[2];
-    struct tm *tm;
-    long code = 0;              /* valeur renvoyÃ©e */
-    long total = 0;             /* octets reÃ§us */
-    long last_progress = 0;
-    long deadline;              /* fin de l'attente d'une rÃ©ponse */
-    long next_event;            /* prochain appel des Ã©vÃ©nements GEM */
-    long cached;
-    long n;
-    short done = 0;             /* 0 : continuer, 1 : fin normale, 2 Ã  4 : erreur */
-    short proxy = 0;
-    short avail = 0;
-    short take;
-    short got = 0;
-    short counter = 3;
-    short choice;
-    short r;
-
-    memset(&blk, 0, sizeof(blk));
-
-    if (request.redirect_flag == 0)
-    {
-        request.newname[0] = 0;
-        strncat(request.newname, file, 0x3ff);
-    }
-    request.redirect_flag = 0;
-
-    trace("- URL   : <");
-    trace_str("-", url);
-    trace_str("-", ">\n");
-
-    if (strnicmp(url, "mailto:", 7) == 0)
-    {
-        mailto(skip_blanks(url + 7), ctype, post);
-        goto finish;
-    }
-
-    if (file[0] == 0)
-        file = ck_tmpname;
-
-    request.handle = -0x29a;
-    request.url = url;
-    request.post = post;
-    request.ctype = ctype;
-    request.file = file;
-    request.method = method;
-    request.ifmod = ifmod;
-
-    /* RÃ©fÃ©rent : l'URL lue lors de la requÃªte prÃ©cÃ©dente. */
-    if (first_request == 1)
-    {
-        request.last_write[0] = 0;
-        request.last_read[0] = 0;
-        first_request = 0;
-    }
-    else
-    {
-        request.last_read[0] = 0;
-        strncat(request.last_read, request.last_write, 0x400);
-    }
-    request.last_write[0] = 0;
-    strncat(request.last_write, request.url, 0x400);
-    if (strchr(request.last_write, '?') != 0)
-        *strchr(request.last_write, '?') = 0;
-    trace("~ Write last URL <%s>.\n", request.last_write);
-    trace("~ Read last URL  <%s>.\n", request.last_read);
-
-    /* Le fichier est-il dÃ©jÃ  en cache ? */
-    cached = Fxattr(0, file, xattr);
-    if (cached < 0)
-    {
-        request.cached = 0;
-        trace("~ http_get: File <%s>=<%ld> is not cached\n", file, cached);
-    }
-    else
-    {
-        request.cached = 1;
-        trace("~ http_get: File <%s>=<%ld> is cached\n", file, cached);
-    }
-
-    if (strnicmp(request.url, "http://cab.ovl", 14) == 0)
-    {
-        code = SendSetup(&request, request.url + 15);
-        goto finish;
-    }
-
-    /* Liaison hors ligne : demande Ã  l'utilisateur. */
-    if (conf.online == 0)
-    {
-        (*cab->event)(-0x138L);
-        if (ask_offline == 1)
-            choice = my_form_alerte("Offline", get_rsc_string(1));
-        else
-            choice = 1;
-        if (choice == 2)
-            conf.online = 1;
-        else
-        {
-            if (choice == 3)
-                ask_offline = 0;
-            code = -0x138L;
-            goto finish;
-        }
-    }
-
-    code = 0;
-    split_URL(url, &request);
-    request.host[0] = 0;
-    strncat(request.host, request.server, 0xff);
-    trace("- Server: <%s>\n", request.host);
-    trace("- URI   : <%s>\n", request.path);
-
-    /* Adresses /internal-gopher-... : icÃ´ne fournie par le module. */
-    n = SendIcon(request.path, file);
-    if (n > 0)
-    {
-        code = 0;
-        goto finish;
-    }
-
-    if (!NewMemBlk(&blk, 0x2001L, 1L, __FILE__, (long)__LINE__))
-    {
-        (*cab->event)(-0x27L);
-        report_error(&request, request.file, 3, &request.file_handle);
-        goto finish;
-    }
-
-connect:
-    hb->used = 0;
-    proxy = http_proxy_cfg(request.proxy, &request.proxy_port, 0x100);
-    if (proxy == 1)
-    {
-        trace("- Proxy : <%s>:(%d)\n", request.proxy, request.proxy_port);
-        request.server[0] = 0;
-        strncat(request.server, request.proxy, 0x100);
-        request.port = request.proxy_port;
-    }
-    request.proxy_flag = 1;
-    deadline = hz200() + (long)conf.timeout * 200L;
-
-    request.handle = open_connection(request.server, request.port, 0);
-    trace("~ open_connection = (%i) on <", request.handle);
-    trace_str("~", request.server);
-    trace_str("~", ">\n");
-    if (request.handle < 0)
-    {
-        /* Le proxy ne rÃ©pond pas : nouvel essai sans proxy. */
-        if (proxy == 1)
-        {
-            split_URL(url, &request);
-            request.handle = open_connection(request.server, request.port, 0);
-            proxy = 0;
-        }
-        if (request.handle < 0)
-        {
-            (*cab->event)(-0x258L);
-            if (request.handle != E_UNREACHABLE && request.handle != E_CANTRESOLVE)
-                ReportRequestText(&request, X_get_err_text(request.handle));
-            goto cleanup;
-        }
-    }
-
-    r = send_request(&request, proxy);
-    if (r != 0)
-    {
-        (*cab->event)(-0x137L);
-        ReportRequestText(&request, X_get_err_text(r));
-        goto cleanup;
-    }
-
-    next_event = hz200() + (long)(conf.event_interval / 1000.0 * 200.0);
-    request.header_state = 1;
-    hb->used = 0;
-    total = 0;
-    last_progress = 0;
-    got = 0;
-    counter = 3;
-    request.file_handle = -1;
-    done = 0;
-
-    while (done == 0)
-    {
-        avail = X_CNbyte_count(request.handle);
-        if (avail < 0)
-            trace("~ CNbyte_count() returns <%s>\n", X_get_err_text(avail));
-
-        if (avail > 0)
-        {
-            take = (short)(hb->len - hb->used - 1);
-            if (avail < take)
-                take = avail;
-            deadline = hz200() + (long)conf.timeout * 200L;
-            counter = 0;
-            trace("~ bytes_available = <%d>, take = <%d> (header.len - header.used) = <%ld>\n",
-                  avail, take, hb->len - hb->used);
-
-            if (take + hb->used <= 0x2000L)
-                got = X_CNget_block(request.handle, hb->data + hb->used, take);
-            else
-            {
-                (*cab->event)(-0x13aL);
-                report_error(&request, request.file, 8, &request.file_handle);
-                done = 2;
-            }
-            if (got != 0)
-                trace("~ X_CNget_block = <%d> bytes read\n", got);
-
-            if (got > 0)
-            {
-                hb->used += got;
-                total += hb->used;      /* l'original ajoute used et non got */
-
-                if (request.header_state == 1)
-                {
-                    request.header_state = HeaderIsReady(&request, hb);
-
-                    if (request.header_state == -3)
-                    {
-                        (*cab->event)(-0x13bL);
-                        trace("! HTTP missed by server administrator, get raw data.\n");
-                        request.header_state = 200;
-                    }
-                    else if (request.header_state == 0x191)
-                    {
-                        trace("~ Document protected\n");
-                        if (ask_auth(&request) == 1)
-                        {
-                            /* Nouvel essai avec l'identifiant saisi. */
-                            if (request.file_handle > 0)
-                            {
-                                Fclose(request.file_handle);
-                                request.file_handle = -1;
-                            }
-                            Fdelete(file);
-                            X_TCP_close(request.handle, 0);
-                            goto connect;
-                        }
-                        trace("~ Authentification aborted\n");
-                        Fdelete(file);
-                        code = -0x24;
-                        done = 2;
-                    }
-                    else if (request.header_state == 0x130)
-                    {
-                        trace("~ File not modified\n");
-                        code = 0;
-                        done = 2;
-                    }
-                    else if (request.header_state == -2)
-                    {
-                        (*cab->event)(-0x27L);
-                        report_error(&request, request.file, 3, &request.file_handle);
-                        done = 2;
-                    }
-                    else if (request.header_state != 1
-                             && request.header_state != 200
-                             && request.header_state != 201
-                             && request.header_state != 301
-                             && request.header_state != 302)
-                    {
-                        if (request.content_type[0] == 0)
-                        {
-                            (*cab->event)(-0x21L);
-                            ReportRequestText(&request, request.status_text);
-                            done = 2;
-                        }
-                        else
-                            request.header_state = 200;
-                    }
-
-                    if (request.header_state == 200 || request.header_state == 201
-                        || request.header_state == 301 || request.header_state == 302)
-                    {
-                        /* DÃ©but du document : crÃ©e le fichier et y Ã©crit
-                           la partie du corps dÃ©jÃ  reÃ§ue. */
-                        request.file_handle = (short)Fcreate(request.file, 0);
-                        if (request.file_handle < 0)
-                        {
-                            trace("! Error, request.file_handle = <%d>\n", request.file_handle);
-                            (*cab->event)(-0x41L);
-                            report_error(&request, request.file, 9, &request.file_handle);
-                            done = 2;
-                        }
-                        total = hb->used;
-                        if (request.content_length > 0)
-                            (*cab->progress)(0x3039L, request.content_length);
-                        if (hb->used != 0)
-                        {
-                            n = Fwrite(request.file_handle, hb->used, hb->data);
-                            if (n < 0)
-                            {
-                                trace("! Fwrite error <%ld>\n", n);
-                                (*cab->event)(-0x41L);
-                                report_error(&request, request.file, 10, &request.file_handle);
-                                hb->used = 0;
-                                done = 2;
-                            }
-                            hb->used = 0;
-                        }
-                    }
-                }
-                else
-                {
-                    /* Suite du corps du document. */
-                    n = Fwrite(request.file_handle, hb->used, hb->data);
-                    if (n < 0)
-                    {
-                        trace("! Fwrite error <%ld>\n", n);
-                        (*cab->event)(-0x41L);
-                        report_error(&request, request.file, 5, &request.file_handle);
-                        done = 2;
-                    }
-                    hb->used = 0;
-                    if (total > 0
-                        && (request.header_state == 200 || request.header_state == 201))
-                    {
-                        last_progress = total;
-                        if (request.header_state != 1)
-                            (*cab->progress)(2L, total);
-                    }
-                }
-            }
-            else if (got == E_EOF)
-            {
-                trace("~ X_CNget_block:EOF\n");
-                done = 1;
-            }
-            else if (got < 0)
-            {
-                (*cab->event)(-0x137L);
-                ReportRequestText(&request, X_get_err_text(got));
-                done = 3;
-            }
-        }
-        else if (avail == E_RRESET)
-            trace("~ bytes_available==E_RRESET, do nothing..\n");
-        else if (avail == E_EOF)
-        {
-            trace("~ bytes_available:EOF\n");
-            if (total > last_progress && total > 0
-                && (request.header_state == 200 || request.header_state == 201))
-                (*cab->progress)(2L, total);
-            done = 1;
-        }
-        else if (avail != E_NODATA && avail != 0)
-        {
-            (*cab->event)(-0x137L);
-            ReportRequestText(&request, X_get_err_text(avail));
-            done = 3;
-        }
-
-        /* Ã‰vÃ©nements GEM, Ã  intervalle rÃ©gulier. */
-        if (hz200() > next_event && !(lazy_events == 1 && avail != 0))
-        {
-            if ((*cab->gem_events)((long)conf.event_duration) == -1L)
-            {
-                trace("! aes_events : STOP icon or Esc key pressed\n");
-                (*cab->event)(-0x13bL);
-                if (request.file_handle > 0)
-                {
-                    Fclose(request.file_handle);
-                    request.file_handle = -1;
-                }
-                Fdelete(request.file);
-                total = 0;
-                code = -1;
-                done = 4;
-            }
-            next_event = hz200() + (long)(conf.event_interval / 1000.0 * 200.0);
-            if (counter == 3 && done == 0)
-                (*cab->progress)(10L, (deadline - hz200()) / 200L);
-            else if (counter < 3)
-                counter++;
-        }
-
-        if (hz200() > deadline)
-        {
-            trace("~ Timeout!\n");
-            (*cab->event)(-0x24L);
-            report_error(&request, request.file, 13, &request.file_handle);
-            done = 4;
-        }
-    }
-
-    if (request.handle != -0x29a)
-    {
-        r = X_TCP_close(request.handle, 0);
-        trace("~ TCP_close() returns <%s>\n", X_get_err_text(r));
-    }
-
-    /* Le fichier prend la date du document (Last-Modified, sinon Date). */
-    if (request.file_handle > 0)
-    {
-        if (request.last_modified > 0)
-        {
-            request.last_modified++;
-            tm = gmtime((time_t *)&request.last_modified);
-        }
-        else
-            tm = gmtime((time_t *)&request.date);
-        words[0] = tm->tm_sec / 2 + (tm->tm_min << 5) + (tm->tm_hour << 11);
-        words[1] = tm->tm_mday + ((tm->tm_mon + 1) << 5) + ((tm->tm_year - 80) << 9);
-        Fdatime(words, request.file_handle, 1);
-        r = Fclose(request.file_handle);
-        request.file_handle = -1;
-        if (r < 0)
-        {
-            (*cab->event)(-0x41L);
-            report_error(&request, request.file, 7, &request.file_handle);
-        }
-    }
-
-cleanup:
-    FreeMemBlk(&blk, __FILE__, (long)__LINE__);
-
-    /* Redirection : le serveur a donnÃ© une nouvelle adresse. */
-    if (strlen(request.location) > 0 && done == 1)
-    {
-        request.redirect[0] = 0;
-        if (strnicmp(request.location, "http://", 7) != 0)
-        {
-            strncat(request.redirect, "http://", 0xff);
-            strncat(request.redirect, request.host, 0xff);
-            if (request.location[0] != '/')
-                strncat(request.redirect, "/", 0xff);
-        }
-        strncat(request.redirect, request.location, 0xff);
-        trace("~ New Location <");
-        trace_str("~", request.redirect);
-        trace_str("~", ">\n");
-
-        if ((*cab->new_filename)(request.redirect, &request.newname_ptr) == 0)
-        {
-            request.newname[0] = 0;
-            strncat(request.newname, request.newname_ptr, 0x3ff);
-            if (request.newname[0] == 0)
-                strncat(request.newname, ck_tmpname, 0x3ff);
-        }
-        else
-        {
-            trace("! browser can not give a new filename, set as old <%s>\n", request.newname);
-            Fdelete(request.file);
-        }
-        request.redirect_flag = 1;
-    }
-    else
-        request.redirect_flag = 0;
-
-finish:
-    if (code != 0)
-        dns_drop_last();
-    ClearCookie();
-    request.retcode = code;
-    request.bytes = total;
-    return code;
-}
-
-/* Lance http_get, et la relance tant que le serveur redirige. AprÃ¨s la
-   premiÃ¨re requÃªte, les donnÃ©es de formulaire sont vides et un POST devient
-   un GET. */
-static long http_loop(url, post, method, ifmod, ctype, file)
-char *url;
-char *post;
-short method;
-long ifmod;
-char *ctype;
-char *file;
-{
-    long rc = 0;
-
-    request.redirect_flag = 1;
-    request.retcode = 0;
-    request.bytes = 0;
-    request.redirect[0] = 0;
-    strncat(request.redirect, url, 0x100);
-    request.newname[0] = 0;
-    strncat(request.newname, file, 0x400);
-
-    while (request.redirect_flag == 1)
-    {
-        trace("~ Call Reception for <%s>\n", request.redirect);
-        rc = http_get(request.redirect, post, method, ifmod, ctype, request.newname);
-        post = "";
-        ctype = post;
-        if (method == HTTP_POST)
-            method = HTTP_GET;
-    }
-    trace("~ END : return_code (%ld) for file contain (%ld) bytes\n",
-          request.retcode, request.bytes);
-    if (request.bytes > 0)
-        (*cab->progress)(6L, 0L);
-    return rc;
-}
-
-/* Interface demandÃ©e par CAB : charge url dans file. */
-long get_url(url, file)
-char *url;
-char *file;
-{
-    trace(BANNER);
-    trace("> get_url\n");
-    return http_loop(url, "", HTTP_GET, 0L, "", file);
-}
-
-/* Envoie des donnÃ©es de formulaire par POST. */
-long post(url, data, ctype, file)
-char *url;
-char *data;
-char *ctype;
-char *file;
-{
-    trace(BANNER);
-    trace("> post \n");
-    return http_loop(url, data, HTTP_POST, 0L, ctype, file);
-}
-
-/* Charge url si le document a changÃ© depuis *ifmod. */
-long get_url_if_modified(url, file, ifmod)
-char *url;
-char *file;
-long *ifmod;
-{
-    trace(BANNER);
-    trace("> get_url_if_modified\n");
-    return http_loop(url, "", HTTP_GET, *ifmod, "", file);
-}
-
-/* Comme get_url, avec le cookie que CAB a mÃ©morisÃ© pour cette adresse. */
-long get_url_cookie(url, file, cookie)
-char *url;
-char *file;
-char *cookie;
-{
-    trace(BANNER);
-    trace("> get_url_cookie\n");
-    ck_current = cookie;
-    return http_loop(url, "", HTTP_GET, 0L, "", file);
-}
-
-long get_url_ifmod_cookie(url, file, ifmod, cookie)
-char *url;
-char *file;
-long *ifmod;
-char *cookie;
-{
-    trace(BANNER);
-    trace("> get_url_ifmod_cookie\n");
-    ck_current = cookie;
-    return http_loop(url, "", HTTP_GET, *ifmod, "", file);
-}
-
-long post_cookie(url, data, ctype, file, cookie)
-char *url;
-char *data;
-char *ctype;
-char *file;
-char *cookie;
-{
-    trace(BANNER);
-    trace("> post_cookie\n");
-    ck_current = cookie;
-    return http_loop(url, data, HTTP_POST, 0L, ctype, file);
-}
+/* ---          EOF                 --- */

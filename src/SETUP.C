@@ -1,270 +1,364 @@
 /*
- * SETUP.C - page de configuration http://cab.ovl/setup.html (V5.68, 19 janvier 2000)
+ * setup.c
+ * Page de r�glage du module (http://cab.ovl).
  *
- * Source reconstitué à partir du binaire CAB.OVL (Pure C), fonctions de
- * 0x140a6 à 0x14674. SendSetup et regle_setup sont les noms des chaînes de
- * trace, les autres noms sont des noms de reconstitution.
- * La page HTML est un modèle de lignes de texte dans CAB_OVL.RSC, arbre 2
- * pour le formulaire, arbre 3 pour la réponse. rsc_next_line renvoie la
- * ligne suivante de l'arbre avec son numéro, qui sert de sélecteur ici.
- * Non compilé avec Pure C, à vérifier.
+ * G�n�re la page HTML de configuration et lit les valeurs
+ * envoy�es par le formulaire.
  *
- * OVLINFO.H définit OVL_ADDRESS, la ligne de signature (lue dans le binaire
- * en 0x21e32).
+ * Utilise : CONFIG.H, GLOBALS.H, HTTP.H, MAIN.H, REPORT.H, RSC.H,
+ *   TOOLS.H, VERSION.H
+ * Utilis� par : HTTP_GET.C
+ *
+ * Cr�ation : 17/06/1998
+ * Auteur : Olivier Booklage
+ * Date : Janvier 2000 (V5.68)
+ * Licence : GNU General Public License version 2 ou ult�rieure
  */
 
-#include <stdio.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
-#include "CONFIG.H"
-#include "CABOVL.H"
-#include "REQUEST.H"
-#include "OVLINFO.H"
-#include "LOG.H"
+/* ---       Includes externes       -- */
 
-extern long Fcreate(char *name, int attr);          /* GEMDOS */
-extern int Fclose(int handle);
-extern long Fwrite(int handle, long count, void *buf);
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<time.h>
+#include	<atarierr.h>
+#include	<string.h>
+#include	<portab.h>
+#include	<logfile.h>
+#include	<sting\sting.h>
+#include	<upoint\memory.h>
+#include	<upoint\struct.h>
+#include	<cab\module.h>
 
-extern char ovl_log[];                              /* OVL.C */
-extern char ovl_conf[];
-extern char cab_ver_str[];
-extern char ovl_ver_str[];
+#include	"globals.h"
+#include	"main.h"
+#include	"version.h"
+#include	"http.h"
+#include	"tools.h"
+#include	"rsc.h"
+#include	"report.h"
+#include	"config.h"
+#include	"tools.h"
 
-extern void clear_info(REQUEST *req);               /* 0x1598c */
-extern int rsc_next_line(char **line, int tree);    /* 0x1529c, indice de ligne, -1 à la fin */
-extern void file_error(char *file, int op, short *err);     /* 0x14952, page d'erreur */
+/* ---       Includes internes       -- */
 
-/* Ouvre le fichier de réponse et prépare les champs de la requête.
-   Renvoie le handle, négatif en cas d'erreur. */
-static int setup_open(req, file)
-REQUEST *req;
-char *file;
+#include	"setup.h"
+
+/* --- Constantes globales internes --- */
+
+/* --- Structures globales internes --- */
+
+/* --- Variables globales  internes --- */
+
+LOCAL UBYTE	query_string[256];
+LOCAL UBYTE	buffer[256];
+
+/* ---     Prototypage interne      --- */
+
+LOCAL INT			open_file( REQUEST *request, UBYTE *file);
+LOCAL	LONG 		close_file( REQUEST *request, INT file_handle );
+LOCAL VOID		printf_setup( REQUEST *request, INT file_handle);
+LOCAL BOOLEAN	regle_setup( REQUEST *request, INT file_handle, UBYTE *query );
+LOCAL VOID		printf_string( REQUEST *request, INT file_handle, BYTE *fmt, ... );
+
+/* ---         Fonctions            --- */
+
+LONG SendSetup( REQUEST *request, UBYTE *uri)
 {
-    short h;
+UBYTE	*p;
+INT file_handle;
 
-    clear_info(req);
-    req->content_length = 0;
-    req->content_type[0] = 0;
-    strncat(req->content_type, "text/html", 0xff);
-    req->mime_version = 1.0;
-    strncat(req->server, "cab.ovl", 0xff);
+	LOG_printf("> SendSetup <%s>\n", uri );
+	
+	if ( (file_handle=open_file( request, request->filename )) < 0 )
+	{
+		return( EWRITF );
+	}
+	
+	*query_string = '\0';
 
-    h = (short)Fcreate(file, 0);
-    if (h < 0)
-    {
-        (*cab->event)(-0x41L);
-        file_error(file, 9, &h);
-        trace("? Couldn't create %s!\n", file);
-    }
-    return h;
+	if ( (*uri == '\0') || ( strnicmp( uri, "welcome.html", 12) == SUCCESS ))
+		printf_setup( request, file_handle );
+	else
+	if ( strnicmp( uri, "setup.html", 10) == SUCCESS )
+		printf_setup( request, file_handle);
+	else
+	if ( strnicmp( uri, "setup-cgi", 9) == SUCCESS )
+	{
+		if ( (p=strchr( uri,'?') ) !=NULL )
+			strncat( query_string, p+1 ,255);
+		regle_setup( request, file_handle, query_string );
+	}
+
+	close_file( request, file_handle);
+	
+return( 0L );
 }
 
-/* Ferme le fichier de réponse. Renvoie 0, ou -1 si h est invalide, -10 en cas d'erreur. */
-static int setup_close(req, h)
-REQUEST *req;
-short h;
+LOCAL INT open_file( REQUEST *request, UBYTE *file)
 {
-    short r;
+INT file_handle;
 
-    if (h <= 0)
-        return -1;
-    r = (short)Fclose(h);
-    if (r < 0)
-    {
-        (*cab->event)(-0x41L);
-        /* L'original passe ici h et non r à la page d'erreur. */
-        file_error(req->file, 7, &h);
-        trace("? Error with Fclose! (%i)\n", r);
-        return -10;
-    }
-    return 0;
+	clear_info(request);
+	request->content_length = 0L;
+	strncat( request->content_type, "text/html", 255);
+	request->mime_version = (double)(1.0);
+	strncat( request->server ,"cab.ovl", 255);
+
+	file_handle=(int)Fcreate(file, 0);
+	
+	if (file_handle<0)
+	{
+		browser->msg_error(EINTRN);
+		ReportRscMessage( file, &file_handle, REPO_CACHE_FILE);
+		LOG_printf("? Couldn't create %s!\n", file);
+	}
+
+return( file_handle );
 }
 
-/* Écrit une ligne formatée dans le fichier de réponse et l'ajoute à la longueur. */
-static void setup_write(REQUEST *req, short h, char *fmt, ...)
+LOCAL	LONG close_file( REQUEST *request, INT file_handle )
 {
-    static char buf[0x400];     /* 0x2ae06, taille non vérifiée */
-    va_list ap;
-    long len;
+INT x;
 
-    if (h < 0)
-        return;
-    va_start(ap, fmt);
-    vsprintf(buf, fmt, ap);
-    va_end(ap);
-    len = (long)strlen(buf);
-    req->content_length += len;
-    if (Fwrite(h, len, buf) < 0)
-    {
-        (*cab->event)(-0x41L);
-        file_error(req->file, 10, &h);
-        trace("! cab.ovl: WARNING during write on file, disk full?\n");
-    }
+	if( file_handle <=0 )	return(-1L);
+	
+	if(	(x=Fclose(file_handle)) < 0 )
+	{
+		browser->msg_error(EINTRN);
+		ReportRscMessage( request->filename, &file_handle, REPO_TMP_CLOSE);
+		LOG_printf("? Error with Fclose! (%i)\n", x);
+		return( EWRITF );
+	}
+
+return(0L);
 }
 
-/* Envoie la page de configuration, arbre 2 du fichier de ressources. */
-static void setup_page(req, h)
-REQUEST *req;
-short h;
+LOCAL BOOLEAN	regle_setup( REQUEST *request, INT file_handle, UBYTE *query )
 {
-    char *line;
-    char date[50];
-    time_t now;
-    int n;
+UBYTE *token;
+BOOLEAN logfile_active = LOG_isopen();
+BOOLEAN close_logfile = TRUE;
+UBYTE *string;
 
-    time(&now);
-    strftime(date, 50, "%a, %d %b %Y %X", localtime(&now));
+	LOG_printf("> regle_setup\n");
+	
+	LOG_level(DEBUG_0);
 
-    while ((n = rsc_next_line(&line, 2)) > 0)
-    {
-        switch (n)
-        {
-        case 4:                 /* (date) */
-            setup_write(req, h, date);
-            break;
-        case 61:                /* (address) */
-            setup_write(req, h, OVL_ADDRESS);
-            break;
-        case 50:                /* case "a", journal */
-            setup_write(req, h, line);
-            if (conf.log_on == 1)
-                setup_write(req, h, "checked");
-            break;
-        case 53:                /* case "b", mode debug */
-            setup_write(req, h, line);
-            if (conf.log_all == 1)
-                setup_write(req, h, "checked");
-            break;
-        case 32:                /* champ "d", attente en secondes */
-            setup_write(req, h, line, conf.timeout);
-            break;
-        case 37:                /* champ "g", intervalle des événements GEM */
-            setup_write(req, h, line, (int)conf.event_interval);
-            break;
-        case 39:                /* champ "h", durée des événements GEM */
-            setup_write(req, h, line, conf.event_duration);
-            break;
-        case 43:                /* case "o", mode en ligne */
-            setup_write(req, h, line);
-            if (conf.online == 1)
-                setup_write(req, h, "checked");
-            break;
-        case 22:                /* liste "i", une option par mode de cookie */
-        case 23:
-        case 24:
-        case 25:
-        case 26:
-            setup_write(req, h, line,
-                        conf.cookie_mode == n - 21 ? " SELECTED" : "");
-            break;
-        default:
-            setup_write(req, h, line);
-            break;
-        }
-    }
+	config.logfile_open = FALSE;
+	config.debug = FALSE;
+	config.cookie = CAB_COOKIE;
+	config.online = FALSE;
+	
+	token = strtok( query, "&");
+	while( token != NULL )
+	{
+		LOG_printf("regle_setup process <%s>\n",token);
+
+		/* "a" : logfile_open */
+		
+		if ( strnicmp( token, "a=on", 4) == SUCCESS )
+		{
+			config.logfile_open = TRUE;
+			LOG_printf("! regle_setup : logfile = ON\n");
+			if ( logfile_active == FALSE )
+			{
+				/*               						                        							      rien    !       ? */
+				LOG_open( LOG_FILE, 500L, LOG_CESSION|LOG_FREE|LOG_CLOCKSTAMP, "OVL ", DEBUG_0|DEBUG_2|DEBUG_3);
+				LOG_welcome();
+			}
+			close_logfile = FALSE;
+		}
+		else
+
+		/* "b" : mode debug */
+
+		if ( strnicmp( token, "b=on", 4) == SUCCESS )
+		{
+			config.debug = TRUE;
+			/*        rien    ~       !      	?				>			 */
+			LOG_level(DEBUG_0|DEBUG_1|DEBUG_2|DEBUG_3|DEBUG_12);
+			LOG_printf("~ CAB version <V%s>\n", cab_version_str );
+			LOG_printf("~ OVL version <V%s>\n", ovl_version_str );
+		}
+		else
+
+		/* "d" : timeout */
+
+		if ( strnicmp( token, "d=", 2) == SUCCESS )
+		{
+			config.timeout = atoi(&token[2]);
+		}
+		else
+
+		/* "g" : gem timer */
+
+		if ( strnicmp( token, "g=", 2) == SUCCESS )
+		{
+			config.gem = (FLOAT)atoi(&token[2]);
+		}
+
+		/* "h" : interne timer */
+
+		else
+		if ( strnicmp( token, "h=", 2) == SUCCESS )
+		{
+			config.timer = atoi(&token[2]);
+		}
+		else
+
+		/* "i" : use cookie type */
+
+		if ( strnicmp( token, "i=", 2) == SUCCESS )
+		{
+			config.cookie = atoi(&token[2]);
+		}
+		else
+
+		/* "o" : online */
+
+		if ( strnicmp( token, "o=on", 4) == SUCCESS )
+		{
+			config.online = TRUE;
+		}
+
+		token = strtok(NULL,"&");
+	}
+	
+	if ( close_logfile == TRUE )
+	{
+		LOG_bye();
+		LOG_close();
+		config.logfile_open = FALSE;
+	}
+
+	SaveConf(CONFIG_FILE);
+	
+	/* affichage de la page OK */
+	
+	while ( NextString( SETOK, &string ) > 0 )
+	{
+		printf_string( request, file_handle , string);
+	}
+
+return( TRUE );
 }
 
-/* Applique les réglages reçus du formulaire, "a=on&b=on&d=60&g=500&h=5&i=5&o=on".
-   Une case absente de la requête est décochée. Enregistre la configuration
-   puis envoie la page de réponse, arbre 3. */
-static void regle_setup(req, h, query)
-REQUEST *req;
-short h;
-char *query;
+LOCAL VOID	printf_setup( REQUEST *request, INT file_handle)
 {
-    char *line;
-    char *tok;
-    int log_was_open;
-    int log_unchecked = 1;
+ULONG ul_today;
+UBYTE date[51];
+UBYTE *string;
+INT index;
 
-    log_was_open = log_is_open();
-    trace("> regle_setup\n");
-    log_set_mask(1L);
+	time(&( (time_t)(ul_today) ));
+	Strftime(date,50,"%a, %d %b %Y %X",localtime(&((time_t)(ul_today))));
 
-    conf.log_on = 0;
-    conf.log_all = 0;
-    conf.cookie_mode = 5;
-    conf.online = 0;
+	/* affichage de la page OK */
+	
+	while ( (index=NextString( SETUP, &string )) > 0 )
+	{
 
-    for (tok = strtok(query, "&"); tok != 0; tok = strtok(0, "&"))
-    {
-        trace("regle_setup process <%s>\n", tok);
-        if (strnicmp(tok, "a=on", 4) == 0)
-        {
-            conf.log_on = 1;
-            trace("! regle_setup : logfile = ON\n");
-            if (!log_was_open)
-            {
-                log_open(ovl_log, "OVL ", 500L, 0x811L, 13L);
-                log_welcome();
-            }
-            log_unchecked = 0;
-        }
-        else if (strnicmp(tok, "b=on", 4) == 0)
-        {
-            conf.log_all = 1;
-            log_set_mask(0x100fL);
-            trace("~ CAB version <V%s>\n", cab_ver_str);
-            trace("~ OVL version <V%s>\n", ovl_ver_str);
-        }
-        else if (strnicmp(tok, "d=", 2) == 0)
-            conf.timeout = atoi(tok + 2);
-        else if (strnicmp(tok, "g=", 2) == 0)
-            conf.event_interval = (float)atoi(tok + 2);
-        else if (strnicmp(tok, "h=", 2) == 0)
-            conf.event_duration = atoi(tok + 2);
-        else if (strnicmp(tok, "i=", 2) == 0)
-            conf.cookie_mode = atoi(tok + 2);
-        else if (strnicmp(tok, "o=on", 4) == 0)
-            conf.online = 1;
-    }
+		if ( index == SETU_DATE )
+		{
+			printf_string( request, file_handle, date);
+		}
+		else if ( index == SETU_ADDRESS )
+		{
+			printf_string( request, file_handle,"cab.ovl (c) <A HREF=\"mailto:xxx@xxx.xxx\">Olivier Booklage</A>");
+		}
+		else if ( index == SETU_LOGFILE )
+		{
+			printf_string( request, file_handle , string);
+			if ( config.logfile_open == TRUE )
+				printf_string( request, file_handle, "checked");
+		}
+		else if ( index == SETU_DEBUG )
+		{
+			printf_string( request, file_handle , string);
+			if ( config.debug == TRUE )
+				printf_string( request, file_handle, "checked");
+		}
+		else if ( index == SETU_TIMEOUT )
+		{
+			printf_string( request, file_handle , string, config.timeout);
+		}
+		else if ( index == SETU_GEM )
+		{
+			printf_string( request, file_handle , string, (INT)config.gem);
+		}
+		else if ( index == SETU_TIMER )
+		{
+			printf_string( request, file_handle , string, config.timer);
+		}
+		else if ( index == SETU_ONLINE )
+		{
+			printf_string( request, file_handle , string);
+			if ( config.online == TRUE )
+				printf_string( request, file_handle, "checked");
+		}
+		else if ( index == SETU_ACC_COOK )
+		{
+			if ( config.cookie == ACCEPT_COOKIE )
+				printf_string( request, file_handle , string, " SELECTED");
+			else
+				printf_string( request, file_handle , string, "");
+		}
+		else if ( index == SETU_REF_COOK )
+		{
+			if ( config.cookie == REFUSE_COOKIE )
+				printf_string( request, file_handle , string, " SELECTED");
+			else
+				printf_string( request, file_handle , string, "");
+		}
+		else if ( index == SETU_STO_COOK )
+		{
+			if ( config.cookie == STORE_COOKIE )
+				printf_string( request, file_handle , string, " SELECTED");
+			else
+				printf_string( request, file_handle , string, "");
+		}
+		else if ( index == SETU_ASK_COOK )
+		{
+			if ( config.cookie == ASK_COOKIE )
+				printf_string( request, file_handle , string, " SELECTED");
+			else
+				printf_string( request, file_handle , string, "");
+		}
+		else if ( index == SETU_CAB_COOK )
+		{
+			if ( config.cookie == CAB_COOKIE )
+				printf_string( request, file_handle , string, " SELECTED");
+			else
+				printf_string( request, file_handle , string, "");
+		}
+		else
+			printf_string( request, file_handle , string);
+	}
 
-    /* Journal décoché : on le ferme. */
-    if (log_unchecked == 1)
-    {
-        log_end();
-        log_close();
-        conf.log_on = 0;
-    }
-    SaveConf(ovl_conf);
-
-    while (rsc_next_line(&line, 3) > 0)
-        setup_write(req, h, line);
 }
 
-/* Répond à une adresse http://cab.ovl/name : page de configuration pour
-   un nom vide, welcome.html ou setup.html, réglages pour setup-cgi?...
-   Renvoie 0, ou -10 si le fichier de réponse ne s'ouvre pas. */
-int SendSetup(req, name)
-REQUEST *req;
-char *name;
+LOCAL VOID printf_string( REQUEST *request, INT file_handle, BYTE *fmt, ... )
 {
-    short h;
-    char *p;
-    static char query[0x100];       /* 0x2ad06 */
+LONG	len;
+va_list	args;
 
-    trace("> SendSetup <%s>\n", name);
+	if (file_handle<0)	return;
 
-    h = (short)setup_open(req, req->file);
-    if (h < 0)
-        return -10;
+	va_start(args,fmt);
+	vsprintf(buffer,fmt,args);
+	va_end(args);
+	
+	len = strlen(buffer);
+	
+	request->content_length += len;
 
-    query[0] = 0;
-    if (name[0] == 0
-        || strnicmp(name, "welcome.html", 12) == 0
-        || strnicmp(name, "setup.html", 10) == 0)
-        setup_page(req, h);
-    else if (strnicmp(name, "setup-cgi", 9) == 0)
-    {
-        p = strchr(name, '?');
-        if (p != 0)
-            strncat(query, p + 1, 0xff);
-        regle_setup(req, h, query);
-    }
-
-    setup_close(req, h);
-    return 0;
+	if ( Fwrite(file_handle, len, buffer) < 0L )
+	{
+		browser->msg_error(EINTRN);
+		ReportRscMessage( request->filename, &file_handle, REPO_CACHE_WRITE);
+		LOG_printf("! cab.ovl: WARNING during write on file, disk full?\n");
+	}
+	
 }
+
+/* ---          EOF                 --- */

@@ -1,93 +1,122 @@
 /*
- * CONFIG.C - fichier de configuration de CAB.OVL (V5.68, 19 janvier 2000)
+ * config.c
+ * Chargement et sauvegarde de la configuration.
  *
- * Source reconstitué à partir du binaire CAB.OVL (Pure C).
- * Les noms de fonctions viennent des chaînes de trace du binaire.
- * Non compilé avec Pure C, à vérifier.
+ * InitConf, LoadConf et SaveConf lisent et �crivent les r�glages.
+ *
+ * Utilise : GLOBALS.H, RSC.H
+ * Utilis� par : COOKIE.C, HTTP_GET.C, MAILTO.C, MAIN.C, MY_HEAD.C,
+ *   RSC.C, SETUP.C, TOOLS.C
+ *
+ * Cr�ation : 16/05/1996
+ * Auteur : Olivier Booklage
+ * Date : Janvier 2000 (V5.68)
+ * Licence : GNU General Public License version 2 ou ult�rieure
  */
 
-#include <stdio.h>
-#include "CONFIG.H"
-#include "LOG.H"
+/* ---			 Includes externes			 -- */
 
-CONFIG conf;                        /* 0x246aa */
+#include	<stdio.h>
+#include	<string.h>
+#include	<portab.h>
+#include	<logfile.h>
 
-extern int my_form_alerte(char *title, char *fmt, ...);     /* 0x15320 */
+#include	"globals.h"
+#include	"rsc.h"
 
-/* Charge le fichier, ou applique les valeurs par défaut s'il est illisible.
-   Renvoie toujours 1. */
-int InitConf(file)
-char *file;
+/* ---			 Includes internes			 -- */
+
+#include	"config.h"
+
+/* --- Constantes globales internes --- */
+
+/* --- Structures globales internes --- */
+
+/* --- Variables globales  internes --- */
+
+CONFIG config;
+
+/* ---		 Prototypage interne			--- */
+
+LOCAL BOOLEAN LoadConf(UBYTE *filename);
+
+/* ---				 Fonctions						--- */
+
+BOOLEAN InitConf(UBYTE *filename)
 {
-    trace("> InitConf <%s>\n", file);
-    if (!LoadConf(file))
-    {
-        conf.version = CONF_VERSION;
-        conf.log_on = 0;
-        conf.log_all = 0;
-        conf.timeout = 60;
-        conf.event_interval = 500.0;    /* copie du long 0x43fa0000 en 0x2050c */
-        conf.event_duration = 5;
-        conf.cookie_mode = 5;
-        conf.online = 1;
-    }
-    return 1;
+
+	LOG_printf("> InitConf <%s>\n", filename);
+
+	if ( LoadConf(filename) == FALSE )	/* on initialise � la main */
+	{
+		config.version = CONFIG_VERSION;
+		config.logfile_open	= FALSE;
+		config.debug	= FALSE;
+		config.timeout	= 60;
+		config.gem				= 500;
+		config.timer			= 5;
+		config.cookie			= CAB_COOKIE;
+		config.online			= TRUE;
+	}
+
+return(TRUE);
 }
 
-/* Lit conf depuis le fichier. Renvoie 0 si le fichier est absent, illisible
-   ou d'une autre version, 1 sinon. */
-int LoadConf(file)
-char *file;
+LOCAL BOOLEAN LoadConf(UBYTE *filename)
 {
-    FILE *f;
-    int ok = 1;
+FILE	*file_ptr;
+BOOLEAN ret = TRUE;
 
-    trace("> LoadConf <%s>\n", file);
-    f = fopen(file, "rb");
-    if (f == 0)
-        return 0;
+	LOG_printf("> LoadConf <%s>\n", filename);
 
-    if (fread(&conf, 0x16, 1, f) == 0)
-    {
-        my_form_alerte("Error",
-            "[1][ An error occure reading config file :| %s | please re-set your CAB.OVL setup ][ OK ]",
-            file);
-        trace("Read w%d> error, please set CAB.OVL setup\n", file);
-        ok = 0;
-    }
-    /* Le test de version a lieu même si la lecture a échoué. */
-    if (conf.version != CONF_VERSION)
-    {
-        my_form_alerte("Error",
-            "[1][ Your CAB.OVL config file :| %s | is changed, please re-set it ][ OK ]",
-            file);
-        trace("Read w%d> error, please set CAB.OVL setup\n", file);
-        ok = 0;
-    }
-    fclose(f);
-    return ok;
+	if( (file_ptr=fopen(filename,"rb")) == NULL)
+	{
+		return(FALSE);
+	}
+
+	if( fread(&config,sizeof(CONFIG),1,file_ptr) <= 0 )
+	{
+		my_form_alerte( "Error", "[1][ An error occure reading config file :| %s | please re-set your CAB.OVL setup ][ OK ]", filename );
+		LOG_printf("Read w%d> error, please set CAB.OVL setup\n",filename);
+		ret = FALSE;
+	}
+	
+	if ( config.version != CONFIG_VERSION )
+	{
+		my_form_alerte( "Error", "[1][ Your CAB.OVL config file :| %s | is changed, please re-set it ][ OK ]", filename );
+		LOG_printf("Read w%d> error, please set CAB.OVL setup\n",filename);
+		ret = FALSE;
+	}
+
+	fclose(file_ptr);
+		
+return( ret );
 }
 
-/* Écrit conf dans le fichier. Renvoie 1 si l'écriture réussit, 0 sinon. */
-int SaveConf(file)
-char *file;
+BOOLEAN SaveConf(UBYTE *filename)
 {
-    FILE *f;
+FILE	*file_ptr;
 
-    trace("> SaveConf <%s>\n", file);
-    f = fopen(file, "wb");
-    if (f == 0)
-    {
-        trace_err("ERR_open_write_file %s\n", file);
-        return 0;
-    }
-    conf.version = CONF_VERSION;
-    if (fwrite(&conf, 0x16, 1, f) != 0)
-    {
-        fclose(f);
-        return 1;
-    }
-    trace_err("ERR_write_file %s\n", file);
-    fclose(f);
-    return 0;
+	LOG_printf("> SaveConf <%s>\n", filename);
+	
+	file_ptr=fopen(filename,"wb");
+	
+	if( file_ptr != NULL)
+	{
+		config.version = CONFIG_VERSION;
+		if( fwrite(&config,sizeof(CONFIG),1,file_ptr) > 0)
+		{
+			fclose(file_ptr);
+			return(TRUE);
+		}
+		ERR_printf("ERR_write_file %s\n",filename);
+		fclose(file_ptr);
+		return(FALSE);
+	}
+
+	ERR_printf("ERR_open_write_file %s\n",filename);
+
+return(FALSE);
 }
+
+/* ---					EOF 								--- */

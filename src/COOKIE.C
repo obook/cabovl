@@ -1,514 +1,693 @@
 /*
- * COOKIE.C - gestion des cookies de CAB.OVL (V5.68, 19 janvier 2000)
+ * cookie.c
+ * Gestion des cookies et points d'entr�e de CAB avec cookie.
  *
- * Source reconstitué à partir du binaire CAB.OVL (Pure C, convention
- * d'appel par registres). Les noms de fonctions viennent des chaînes de
- * trace du binaire. Les noms de variables sont des choix de reconstitution.
- * Le tout n'est pas compilé avec Pure C, à vérifier.
+ * D�coupe les lignes Set-Cookie, demande � l'utilisateur d'accepter
+ * ou de refuser chaque cookie, stocke les cookies accept�s dans un
+ * fichier et construit la ligne Cookie des requ�tes suivantes.
+ * Fournit aussi get_url_cookie, get_url_ifmod_cookie et
+ * post_cookie, variantes des points d'entr�e qui passent un cookie.
  *
- * Reconstituées : AddCookie, SendCookie, SplitCookie, ClearCookie,
- * CheckCookieDate, ProcessLine.
+ * Utilise : CONFIG.H, GET_URL.H, GLOBALS.H, HTTP.H, HTTP_GET.H,
+ *   IF_MODIF.H, MAIN.H, POST_URL.H, RSC.H, TOOLS.H, VERSION.H
+ * Utilis� par : HEADER.C, HTTP_GET.C, MAIN.C, MY_HEAD.C, TOOLS.C
  *
- * Dans le binaire, fopen, fclose et remove passent par des enveloppes de
- * trace qui reçoivent __FILE__ et __LINE__. Ici ce sont les appels standard.
+ * Cr�ation : 14/07/1998
+ * Auteur : Olivier Booklage
+ * Date : Janvier 2000 (V5.68)
+ * Licence : GNU General Public License version 2 ou ult�rieure
+ * Notes d'origine : voir le commentaire qui suit.
  */
 
-#include <stdio.h>
-#include <string.h>
-#include <time.h>
-#include "CONFIG.H"
-#include "CABOVL.H"
-#include "REQUEST.H"
-#include "LOG.H"
+#define NOT_SET_EXPIRE
+/* #define DEF_PATH_IS_ROOT */
+/*------------------------------------------------
+//
+// Module: cookie.c
+//
+// Objet : 
+//
+// ToDo  : V�rifier la date de validit�
+//
+						mettre l'URI et non l'URL dans path si absent !!!
+						
+Set-Cookie: CUSTOMER=WILE_E_COYOTE; path=/; expires=Wednesday, 09-Nov-99 23:12:40 GMT
 
-/* Le mode des cookies est le champ cookie_mode de la configuration (0x246ba). */
-#define ck_mode (conf.cookie_mode)
+avec yahoo :
 
+Set-Cookie: Y=v=1&n=9pnd5pgftg31k; domain=.yahoo.com; path=/; expires=Thursday, 31-Dec-98 23:00:00 GMT
 
-/* Résultat de l'analyse, adresses du segment data de CAB.OVL entre parenthèses. */
-char *ck_version;           /* 0x246c0 */
-char *ck_name;              /* 0x246c4 */
-char *ck_value;             /* 0x246c8 */
-char *ck_expires;           /* 0x246cc */
-char *ck_path;              /* 0x246d0 */
-char *ck_domain;            /* 0x246d4 */
-char ck_pathbuf[0x700];     /* 0x246d8, chemin par défaut */
-int ck_secure;              /* 0x24dd8 */
-char ck_line[0x100];        /* 0x24dda, cookie mis en forme */
-
-char *ck_default_expires = "0";     /* pointeur 0x20766 */
-
-char *ck_current;                   /* 0x24eda, cookie courant, 0 si aucun */
-
-/* Tampons de lecture du fichier de cookies, 0x80 octets chacun. */
-char ck_in[0x80];                   /* 0x24ad8, ligne lue */
-char ck_copy[0x80];                 /* 0x24b58, copie de la ligne lue */
-char ck_f1[0x80];                   /* 0x24bd8, champ 1 */
-char ck_f2[0x80];                   /* 0x24c58, champ 2 */
-char ck_f3[0x80];                   /* 0x24cd8, champ 3, date d'expiration */
-char ck_f4[0x80];                   /* 0x24d58, champ 4, reste de la ligne */
-
-extern char ck_filename[];          /* 0x25489, fichier de cookies, défini ailleurs */
-extern char ck_tmpname[];           /* 0x25306, fichier temporaire, défini ailleurs */
+void ___CDECL (*cookie)(char *url, char *name, char *value,  char *expires, char *path, char *domain, int secure);
 
 
-extern unsigned long parse_date(char *s);   /* 0x15686, 0xffffffff si erreur */
-extern int ask_cookie_accepte(char *host, char *domain, char *path,
-                              char *name, char *value, char *expires);  /* 0x14d58, 0xf = accepté */
+!! Il est possible que cab.app ne fonctionne pas bien avec
+des formes de date comme :"Wednesday, 01-Sep-99 07:41:51 GMT"
+car il dit vouloir un autre format (voir plus bas)
+=> faut-t'il transformer ?
+pourtant pas mal de serveurs utilisent ce format!
 
-/* Fonctions du module et du journal de CAB.OVL. */
-extern char *skip_blanks(char *s);  /* 0x15e78, saute espaces et tabulations */
-extern char *trim_token(char *s);   /* 0x15e8a, idem, coupe au premier caractère < 0x20 */
+//
+//
+// Maintenance :
+//
+//     Auteur  : Olivier Booklage
+//     Version : V1.0
+//     Date    : 14/07/1998
+//     Remarq. :
+//
+//
+//
+//-----------------------------------------------*/
 
-/* Remplace CR et LF par 0 dans s. s peut être nul. */
-void chomp(s)
-char *s;
+
+/* ---       Includes externes       -- */
+
+#include	<stdio.h>
+#include	<string.h>
+#include	<time.h>
+#include	<portab.h>
+#include	<logfile.h>
+#include	<cab\module.h>
+
+#include	"globals.h"
+#include	"main.h"
+#include	"http_get.h"
+#include	"get_url.h"
+#include	"post_url.h"
+#include	"if_modif.h"
+
+#include	"tools.h"
+#include	"http.h"
+#include	"config.h"
+#include	"rsc.h"
+#include	"tools.h"
+#include	"version.h"
+
+/* ---       Includes internes       -- */
+
+#include "cookie.h"	
+
+/* --- Constantes globales internes --- */
+
+/* --- Structures globales internes --- */
+
+/* --- Variables globales  internes --- */
+
+LOCAL UBYTE *version;
+LOCAL UBYTE *name;
+LOCAL UBYTE *value;
+LOCAL UBYTE *expires;
+LOCAL UBYTE *path;
+LOCAL UBYTE *domain;
+
+/*LOCAL UBYTE *empty_string = "-";*/
+LOCAL UBYTE *empty_string = "0";
+#ifdef DEF_PATH_IS_ROOT
+	LOCAL UBYTE *root_string = "/";
+#endif
+LOCAL UBYTE URI[1024];
+
+LOCAL UBYTE line[128];
+LOCAL UBYTE save[128];
+
+LOCAL UBYTE domain_str[128];	/* rfc2019 : 4096 bytes pour chaques variables */
+LOCAL UBYTE path_str[128];
+LOCAL UBYTE expires_str[128];
+LOCAL UBYTE data_str[128];
+LOCAL INT		secure;
+
+LOCAL UBYTE cookie_buffer[256];	/* Pour preparer */
+
+UBYTE *cookie_str;
+UBYTE *new_location_cookie_str;
+
+/* ---     Prototypage interne      --- */
+
+LOCAL BOOLEAN SplitCookie( REQUEST *request, UBYTE *line );
+
+LOCAL VOID ProcessLine(BYTE *line, BYTE *p1, BYTE *p2, BYTE *p3, BYTE *p4, LONG limit);
+EXTERN 	UBYTE *skipwhite ( const UBYTE *src );
+LOCAL VOID propre( UBYTE *string );
+
+/* ---         Fonctions            --- */
+
+/*
+Identisch to get_url, until to the  additional(ly) parameter(s) "cookie".
+In "cookie" stands the  Cookie-Information for the  existing URL (or 0L, 
+in the case that no Cookie-Information available). 
+*/
+
+long ___CDECL get_url_cookie(char *url, char *filename, char *cookie)
 {
-    if (s == 0)
-        return;
-    for (; *s != 0; s++)
-        if (*s == '\r' || *s == '\n')
-            *s = 0;
+
+	LOG_printf("- ***************************************************\n");
+	LOG_printf("> get_url_cookie\n");
+
+	cookie_str = cookie;
+
+return(http_get(url, "", "", filename, GET_METHOD,0L));
 }
 
-/* Lit un en-tête "Set-Cookie" dans cookie (modifié sur place).
-   Renvoie 1 si le cookie est exploitable, 0 sinon. */
-int SplitCookie(url, cookie)
-REQUEST *url;
-char *cookie;
+/*
+Identisch to get_url_if_modified, until to the  additional(ly) parameter(s) "cookie".
+In "cookie" stands the  Cookie-Information for the  existing URL (or 0L, in the case that
+no Cookie-Information available). If this function implements\ed will(_be),
+so must too get_url_if_modified become implements\ed (both are but optional).
+*/
+long ___CDECL get_url_ifmod_cookie(char *url, char *filename, long *time, char *cookie)
 {
-    int has_path = 0;
-    int has_domain = 0;
-    char *tok;
-    char *eq;
-    char *p;
 
-    trace("> SplitCookie\n");
+	LOG_printf("- ***************************************************\n");
+	LOG_printf("> get_url_ifmod_cookie\n");
 
-    ck_version = 0;
-    ck_name = 0;
-    ck_value = 0;
-    ck_secure = 0;
-    ck_path = 0;
-    ck_domain = 0;
-    ck_expires = 0;
-
-    for (tok = strtok(cookie, ";"); tok != 0; tok = strtok(0, ";"))
-    {
-        tok = trim_token(tok);
-        trace("~ SplitCookie: token =");
-        trace_str("~", tok);
-        trace_str("~", ">\n");
-
-        if (strnicmp(tok, "version=", 8) == 0)
-            ck_version = skip_blanks(tok + 8);
-        else if (strnicmp(tok, "domain=", 7) == 0)
-        {
-            ck_domain = skip_blanks(tok + 7);
-            has_domain = 1;
-        }
-        else if (strnicmp(tok, "path=", 5) == 0)
-        {
-            ck_path = skip_blanks(tok + 5);
-            has_path = 1;
-        }
-        else if (strnicmp(tok, "expires=", 8) == 0)
-            ck_expires = skip_blanks(tok + 8);
-        else
-        {
-            /* Dernier "=" du jeton : nom=valeur. */
-            eq = strrchr(tok, '=');
-            if (eq != 0)
-            {
-                ck_name = tok;
-                ck_value = skip_blanks(eq + 1);
-                *eq = 0;
-            }
-            else if (strnicmp(tok, "secure", 6) == 0)
-                ck_secure = 1;
-        }
-    }
-
-    chomp(ck_name);
-    chomp(ck_value);
-    chomp(ck_path);
-    chomp(ck_expires);
-    chomp(ck_domain);
-
-    if (ck_name == 0)
-    {
-        trace("? SplitCookie: incomplete cookie data, no name found\n");
-        return 0;
-    }
-    if (ck_value == 0)
-    {
-        trace("? SplitCookie: incomplete cookie data, no value found\n");
-        return 0;
-    }
-
-    if (ck_path == 0)
-    {
-        /* Chemin du document sans la requête ni le nom de fichier. */
-        ck_pathbuf[0] = 0;
-        strncat(ck_pathbuf, url->path, 0x400);
-        p = strchr(ck_pathbuf, '?');
-        if (p != 0)
-            *p = 0;
-        p = strrchr(ck_pathbuf, '/');
-        if (p != 0)
-            p[1] = 0;
-        ck_path = ck_pathbuf;
-        trace("~ SplitCookie: incomplete cookie data, path set as document path.\n");
-    }
-
-    if (ck_expires == 0)
-    {
-        ck_expires = ck_default_expires;
-        trace("~ SplitCookie: incomplete cookie data, no expires found\n");
-    }
-
-    if (ck_domain == 0)
-    {
-        /* Domaine par défaut : serveur, à partir de son premier point. */
-        p = strchr(url->host, '.');
-        if (p == 0)
-        {
-            trace("! SplitCookie: incomplete cookie data, not domain available\n");
-            return 0;
-        }
-        ck_domain = p;
-        trace("~ SplitCookie: incomplete cookie data, domain set as server\n");
-    }
-
-    trace("~ SplitCookie : name <");
-    trace_str("~", ck_name);
-    trace_str("~", ">\n");
-    trace("~ SplitCookie : value <");
-    trace_str("~", ck_value);
-    trace_str("~", ">\n");
-    trace("~ SplitCookie : domain <");
-    trace_str("~", ck_domain);
-    trace_str("~", ">\n");
-    trace("~ SplitCookie : path <");
-    trace_str("~", ck_path);
-    trace_str("~", ">\n");
-    trace("~ SplitCookie : expires <");
-    trace_str("~", ck_expires);
-    trace_str("~", ">\n");
-
-    /* Mise en forme : [$version=V\r\n]nom=valeur[; $path=P][; $domain=D] */
-    ck_line[0] = 0;
-    if (ck_version != 0)
-    {
-        strncat(ck_line, "$version=", 0x100);
-        strncat(ck_line, ck_version, 0x100);
-        strncat(ck_line, "\r\n", 0x100);
-    }
-    strncat(ck_line, ck_name, 0x100);
-    strncat(ck_line, "=", 0x100);
-    strncat(ck_line, ck_value, 0x100);
-    if (has_path == 1)
-    {
-        strncat(ck_line, "; ", 0x100);
-        strncat(ck_line, "$path=", 0x100);
-        strncat(ck_line, ck_path, 0x100);
-    }
-    if (has_domain == 1)
-    {
-        strncat(ck_line, "; ", 0x100);
-        strncat(ck_line, "$domain=", 0x100);
-        strncat(ck_line, ck_domain, 0x100);
-    }
-    return 1;
+	cookie_str = cookie;
+	
+return(http_get(url, "", "", filename, GET_METHOD, *time));
 }
 
-/* Efface le cookie courant. */
-void ClearCookie()
+/*
+Identisch to post, until to the  additional(ly) parameter(s) "cookie".
+In "cookie" stands the  Cookie-Information for the  existing URL (or 0L, in the case that
+no Cookie-Information available). If this function implements\ed will(_be),
+so must too post become implements\ed.
+
+! content semble etre le filename !! 
+
+*/
+long ___CDECL post_cookie(char *url, char *content, char *enctype, char *filename, char *cookie)
 {
-    trace("> ClearCookie\n");
-    ck_current = 0;
-    ck_line[0] = 0;
+	LOG_printf("- ***************************************************\n");
+	LOG_printf("> post_cookie\n");
+
+	cookie_str = cookie;
+
+return(http_get(url, content, enctype, filename, POST_METHOD,0L));
 }
 
-/* Découpe une ligne du fichier de cookies en quatre champs.
-   Les trois premiers sont séparés par une tabulation, le quatrième est
-   le reste de la ligne. Chaque champ est copié sur n caractères au plus. */
-void ProcessLine(line, f1, n, f2, f3, f4)
-char *line;
-char *f1;
-long n;
-char *f2;
-char *f3;
-char *f4;
+BOOLEAN AddCookie( REQUEST *request, UBYTE *line )
 {
-    char *tok;
+FILE	*file_ptr;
 
-    trace("> ProcessLine <%s>\n", line);
+	LOG_printf("> AddCookie\n");
 
-    f4[0] = 0;
-    f3[0] = 0;
-    f2[0] = 0;
-    f1[0] = 0;
+	/* D�coupage des informations */
 
-    tok = strtok(line, "\t");
-    if (tok == 0)
-        return;
-    f1[0] = 0;
-    strncat(f1, tok, (size_t)n);
+	if ( config.cookie == REFUSE_COOKIE )
+	{
+		LOG_printf("~ Cannot set cookie because you refuse cookies.\n");
+		return(FALSE);
+	}
 
-    tok = strtok(0, "\t");
-    if (tok == 0)
-        return;
-    f2[0] = 0;
-    strncat(f2, tok, (size_t)n);
+	if( SplitCookie( request, line ) != TRUE )
+	{
+		LOG_printf("! SplitCookie error, can not set cookie.\n");
+		return (FALSE);
+	}
 
-    tok = strtok(0, "\t");
-    if (tok == 0)
-        return;
-    f3[0] = 0;
-    strncat(f3, tok, (size_t)n);
+	if ( config.cookie == ASK_COOKIE )
+	{
+		if ( ask_cookie_accepte( request->true_server, domain, path, name, value, expires) != COOK_ACCEPT )
+			return (FALSE);
+	}
 
-    tok = strtok(0, "");
-    if (tok == 0)
-        return;
-    f4[0] = 0;
-    strncat(f4, tok, (size_t)n);
+	if ( ( cab_version >= 0x30323730L ) && ( config.cookie == CAB_COOKIE ) )
+	{
+
+/*
+With this can the  OVL a "Cookie",that  from the  HTTP-answer
+extract\ed became, put. Ever\y after effected settings will(_be) CAB
+the  Cookie in the  Cookie-databank insert,that  user(s) ask,
+or the  Cookie ignore.
+
+Url -is the  URL of the  document, for that the  Cookie supplied became.
+Name -name of the  Cookies
+value -value of the  Cookies (or 0, in the case that no value placed)
+expires -Verfallsdatum (or 0, in the case that not placed) as\than String in the
+ format "Wdy, DD-Mon-YYYY HH:MM:SS GMT"
+path -access path, for that the  Cookie is valid.
+Domain -Domain, for that the  Cookie valid is
+secure -0 for the  normal (unsichere) transfer, 1 for sure(ly) HTTPS.
+
+This function is available since CAB 2.7 (i.e. version>=0x30323730)
+and(!) if derentsprechende entry in the  structure is not 0L.
+*/
+
+#ifdef notdef
+		if ( stricmp( expires, empty_string) == SUCCESS )
+/*		expires = "0\0"; */
+			expires = "0";
+#endif
+
+		LOG_printf("~ browser->cookie(");
+		LOG_puts("~", request->URL);
+		LOG_puts("~", ", ");
+		LOG_puts("~", name);
+		LOG_puts("~", ", ");
+		LOG_puts("~", value);
+		LOG_puts("~", ", ");
+		LOG_puts("~", path);
+		LOG_puts("~", ", ");
+		LOG_puts("~", domain);
+		LOG_puts("~", ", ");
+		LOG_puts("~", expires);
+		LOG_puts("~", ", ");
+		if ( secure > 0)
+			LOG_puts("~", "1");
+		else
+			LOG_puts("~", "0");
+		LOG_puts("~", ");\n");
+		browser->set_cookie( request->URL, name, value, expires, path, domain, secure);
+		cookie_str = cookie_buffer; /* Nous pourrions l'annuler non ? */
+	}
+	else
+	{
+		if( (file_ptr=fopen(COOKIE_FILE,"a+")) !=NULL)
+		{
+			fwrite( domain, sizeof(UBYTE), strlen(domain), file_ptr);
+			fprintf( file_ptr, "\t");
+
+			fwrite( path, sizeof(UBYTE), strlen(path), file_ptr);
+			fprintf( file_ptr, "\t");
+
+			fwrite( expires, sizeof(UBYTE), strlen(expires), file_ptr);
+			fprintf( file_ptr, "\t");
+
+			fwrite( cookie_buffer, sizeof(UBYTE), strlen(cookie_buffer), file_ptr);
+			fprintf( file_ptr, "\n");
+
+			fclose(file_ptr);
+			return(TRUE);
+		}
+		LOG_printf("~ Error open write cookie file <%s>\n",COOKIE_FILE);
+	}
+
+return(FALSE);
 }
 
-/* Réécrit le fichier de cookies sans les cookies périmés.
-   Une date "-" ou une date passée supprime la ligne. Une ligne sans date
-   est conservée. Renvoie toujours 0. */
-int CheckCookieDate()
+BOOLEAN SendCookie( UBYTE *domain , UBYTE *path, UBYTE *buffer, int limit)
 {
-    FILE *in;
-    FILE *out;
-    unsigned long now;
-    unsigned long expires;
+FILE *file_handle;
+UBYTE *p;
+INT count = 0;
 
-    trace("> CheckCookieDate\n");
-    if (ck_mode == 5)
-        return 0;
+	LOG_printf("> SendCookie\n");
+	
+	if  ( ( cab_version < CAB_GERE_COOKIE ) && ( config.cookie == REFUSE_COOKIE ) )
+		return (FALSE);
+	
+/* *cookie_buffer = '\0'; il a l'air d'effacer cookie_str !!*/ 
 
-    time((time_t *)&now);
+	if ( config.cookie == CAB_COOKIE )
+	{
+		if ( cookie_str != NULL  )
+		{
 
-    in = fopen(ck_filename, "r");
-    if (in == 0)
-    {
-        trace("? Cookie file <%s> error\n", ck_filename);
-        return 0;
-    }
-    out = fopen(ck_tmpname, "w");
-    if (out == 0)
-    {
-        trace("? Unable to open temporary file <%s>\n", ck_tmpname);
-        fclose(in);
-        return 0;
-    }
+			strncat( buffer, "Cookie: ", limit );
+			strncat( buffer, cookie_str, limit );
+			strncat( buffer, "\r\n", limit );
+			LOG_printf("- set cookie <");
+			LOG_puts("-", cookie_str);
+			LOG_puts("-",">\n");
+			cookie_str = NULL;
 
-    while (fgets(ck_in, 0x7f, in) != 0)
-    {
-        ck_copy[0] = 0;
-        strncat(ck_copy, ck_in, 0xff);
-        ProcessLine(ck_in, ck_f1, 0x80L, ck_f2, ck_f3, ck_f4);
+			*cookie_buffer = '\0';
 
-        if (ck_f3[0] != 0)
-        {
-            if (strcmp(ck_f3, "-") == 0)
-            {
-                trace("~ CheckCookieDate <%s> no expires : WILL DELETE\n", ck_f1);
-                continue;
-            }
-            expires = parse_date(ck_f3);
-            if (expires < now && expires != 0xffffffffUL)
-            {
-                trace("~ CheckCookieDate <%s> (%ld) < (%ld) WILL DELETE\n",
-                      ck_f3, expires, now);
-                continue;
-            }
-        }
-        /* L'original appelle fprintf avec la ligne comme format. */
-        fputs(ck_copy, out);
-    }
+			return(TRUE);
+		}
+		LOG_printf("~ cookie_str is NULL, no cookie string given by CAB.\n");
 
-    fclose(in);
-    remove(ck_filename);
-    fclose(out);
-    rename(ck_tmpname, ck_filename);
-    return 0;
+		*cookie_buffer = '\0';
+
+		return(FALSE);
+	}
+
+	cookie_str = NULL;
+
+	*cookie_buffer = '\0';
+
+	file_handle = fopen(COOKIE_FILE, "r");
+	
+	if (file_handle == NULL)
+	{
+		LOG_printf("~ Cookie file <%s> not found\n",COOKIE_FILE);
+		return(FALSE);
+	}
+	
+	while ( fgets(line, 127, file_handle) != NULL )
+	{
+		if ( (*line != ';') && (*line != '#') )
+		{
+			if ( (p=strchr(line,10)) != NULL ) *p='\0';
+			if ( (p=strchr(line,13)) != NULL ) *p='\0';
+			ProcessLine(line, domain_str, path_str, expires_str, data_str, 128);
+			if (*domain_str != EOS)
+			{
+				LOG_printf("~ CheckCookie domain <%s> on <%s>\n", domain, domain_str);
+				if ( ( strstr( domain, domain_str ) != NULL ) || ( stricmp(domain, domain_str) == SUCCESS ) )
+				{
+					if ( *path_str != EOS )
+					{
+						LOG_printf("~ CheckCookie path <");
+						LOG_puts("~",path);
+						LOG_puts("~","> on <");
+						LOG_puts("~",path_str);
+						LOG_puts("~",">\n");
+						if ( (strstr(path, path_str) != NULL) || ( stricmp(path, path_str) == SUCCESS ) )
+						{
+							if ( *data_str != EOS )
+							{
+								/* manque version , path, domain doivent etre optionnels */
+								if ( count == 0 )
+									strncat( buffer, "Cookie: ", limit );
+								else
+/*								strncat( buffer, ";\r\n", limit ); */
+									strncat( buffer, "; ", limit );
+
+								strncat( buffer, data_str, limit );
+
+/* Nouveau, on n'envoi pas plus d'une ligne !! */
+
+		fclose(file_handle);
+		strncat( buffer, "\r\n", limit );
+								count++;
+		return( TRUE );
+
+#ifdef NOTDEF
+								LOG_printf("- set cookie <");
+								LOG_puts("-", variable_str);
+								LOG_puts("-",">\n");
+#endif
+							}
+							else
+								LOG_printf("~ CheckCookie variable empty\n");
+						}
+						else
+							LOG_printf("~ CheckCookie path do not match\n");
+					}
+					else
+						LOG_printf("~ CheckCookie empty path\n");
+				}
+				else
+					LOG_printf("~ CheckCookie domain do not match\n");
+/*
+				fclose(file_handle);
+				return(TRUE);
+*/
+			}
+		}
+	}
+	fclose(file_handle);
+
+	if ( count > 0 )
+	{
+		strncat( buffer, "\r\n", limit );
+		return( TRUE );
+	}
+
+return(FALSE);
 }
 
-/* Enregistre le cookie lu par SplitCookie.
-   Selon ck_mode et la version de CAB : refus, question à l'utilisateur,
-   transmission à CAB ou ajout au fichier de cookies.
-   Renvoie 1 seulement si le cookie est écrit dans le fichier. */
-int AddCookie(url, cookie)
-REQUEST *url;
-char *cookie;
+VOID	ClearCookie( VOID )
 {
-    FILE *f;
-
-    trace("> AddCookie\n");
-    if (ck_mode == 2)
-    {
-        trace("~ Cannot set cookie because you refuse cookies.\n");
-        return 0;
-    }
-    if (SplitCookie(url, cookie) != 1)
-    {
-        trace("! SplitCookie error, can not set cookie.\n");
-        return 0;
-    }
-    if (ck_mode == 4
-        && ask_cookie_accepte(url->host, ck_domain, ck_path, ck_name,
-                              ck_value, ck_expires) != 0xf)
-        return 0;
-
-    if (cab_version >= 0x30323730L && ck_mode == 5)
-    {
-        /* CAB gère lui-même ses cookies : on lui transmet celui-ci. */
-        trace("~ browser->cookie(");
-        trace_str("~", url->url);
-        trace_str("~", ", ");
-        trace_str("~", ck_name);
-        trace_str("~", ", ");
-        trace_str("~", ck_value);
-        trace_str("~", ", ");
-        trace_str("~", ck_path);
-        trace_str("~", ", ");
-        trace_str("~", ck_domain);
-        trace_str("~", ", ");
-        trace_str("~", ck_expires);
-        trace_str("~", ", ");
-        trace_str("~", ck_secure > 0 ? "1" : "0");
-        trace_str("~", ");\n");
-        (*cab->cookie)(url->url, ck_name, ck_value, ck_expires,
-                       ck_path, ck_domain, ck_secure);
-        ck_current = ck_line;
-        return 0;
-    }
-
-    f = fopen(ck_filename, "a+");
-    if (f == 0)
-    {
-        trace("~ Error open write cookie file <%s>\n", ck_filename);
-        return 0;
-    }
-    /* Une ligne par cookie : domaine, chemin, expiration, cookie. */
-    fwrite(ck_domain, 1, strlen(ck_domain), f);
-    fputs("\t", f);
-    fwrite(ck_path, 1, strlen(ck_path), f);
-    fputs("\t", f);
-    fwrite(ck_expires, 1, strlen(ck_expires), f);
-    fputs("\t", f);
-    fwrite(ck_line, 1, strlen(ck_line), f);
-    fputs("\n", f);
-    fclose(f);
-    return 1;
+	LOG_printf("> ClearCookie\n");
+	cookie_str = NULL;
+	*cookie_buffer = '\0';
 }
 
-/* Ajoute à out (max caractères) l'en-tête "Cookie:" pour le serveur host
-   et le chemin req_path. Seul le premier cookie correspondant du fichier
-   est envoyé. Renvoie 1 si un cookie a été ajouté, 0 sinon. */
-int SendCookie(host, req_path, max, out)
-char *host;
-char *req_path;
-int max;
-char *out;
+BOOLEAN CheckCookieDate( VOID )
 {
-    FILE *f;
-    char *p;
-    int count = 0;
+FILE *file_handle;
+FILE *tmp_handle;
+time_t	cookie_time;
+ULONG		ul_today;
 
-    trace("> SendCookie\n");
-    if ((unsigned long)cab_version < 0x99999999UL && ck_mode == 2)
-        return 0;
+	LOG_printf("> CheckCookieDate\n");
+	
+	if ( config.cookie == CAB_COOKIE )	return(FALSE);
 
-    if (ck_mode == 5)
-    {
-        /* Le cookie vient de CAB, pas du fichier. */
-        if (ck_current == 0)
-        {
-            trace("~ cookie_str is NULL, no cookie string given by CAB.\n");
-            ck_line[0] = 0;
-            return 0;
-        }
-        strncat(out, "Cookie: ", (size_t)max);
-        strncat(out, ck_current, (size_t)max);
-        strncat(out, "\r\n", (size_t)max);
-        trace("- set cookie <");
-        trace_str("-", ck_current);
-        trace_str("-", ">\n");
-        ck_current = 0;
-        ck_line[0] = 0;
-        return 1;
-    }
+	time(&( (time_t)(ul_today) ));
+	
+	file_handle = fopen(COOKIE_FILE, "r");
+	
+	if (file_handle == NULL)
+	{
+		LOG_printf("? Cookie file <%s> error\n",COOKIE_FILE);
+		return(FALSE);
+	}
+	
+	tmp_handle=fopen(TMP_FILE, "w");
 
-    ck_current = 0;
-    ck_line[0] = 0;
-    f = fopen(ck_filename, "r");
-    if (f == 0)
-    {
-        trace("~ Cookie file <%s> not found\n", ck_filename);
-        return 0;
-    }
+	if ( tmp_handle == NULL )
+	{
+		LOG_printf("? Unable to open temporary file <%s>\n",TMP_FILE);
+		fclose( file_handle );
+		return(FALSE);
+	}
 
-    while (fgets(ck_in, 0x7f, f) != 0)
-    {
-        if (ck_in[0] == ';' || ck_in[0] == '#')
-            continue;
-        p = strchr(ck_in, '\n');
-        if (p != 0)
-            *p = 0;
-        p = strchr(ck_in, '\r');
-        if (p != 0)
-            *p = 0;
-        ProcessLine(ck_in, ck_f1, 0x80L, ck_f2, ck_f3, ck_f4);
-        if (ck_f1[0] == 0)
-            continue;
+	while ( fgets(line, 127, file_handle) != NULL )
+	{
+		*save = '\0';
+		strncat( save, line, 255);
+		ProcessLine(line, domain_str, path_str, expires_str, data_str, 128);
+		if ( *expires_str != EOS )
+		{
+			if ( strcmp( expires_str, "-") != SUCCESS )
+			{
+				cookie_time = parse_date(expires_str);
+				if ( (cookie_time < ul_today) && ( cookie_time != -1L ) )
+					LOG_printf("~ CheckCookieDate <%s> (%ld) < (%ld) WILL DELETE\n", expires_str, cookie_time, ul_today);
+				else
+					fprintf( tmp_handle, save);
+			}
+			else
+				LOG_printf("~ CheckCookieDate <%s> no expires : WILL DELETE\n", domain_str);
+		}else	/* defaut */
+			fprintf( tmp_handle, save);
+	}
 
-        trace("~ CheckCookie domain <%s> on <%s>\n", host, ck_f1);
-        if (strstr(host, ck_f1) == 0 && stricmp(host, ck_f1) != 0)
-        {
-            trace("~ CheckCookie domain do not match\n");
-            continue;
-        }
-        if (ck_f2[0] == 0)
-        {
-            trace("~ CheckCookie empty path\n");
-            continue;
-        }
-        trace("~ CheckCookie path <");
-        trace_str("~", req_path);
-        trace_str("~", "> on <");
-        trace_str("~", ck_f2);
-        trace_str("~", ">\n");
-        if (strstr(req_path, ck_f2) == 0 && stricmp(req_path, ck_f2) != 0)
-        {
-            trace("~ CheckCookie path do not match\n");
-            continue;
-        }
-        if (ck_f4[0] == 0)
-        {
-            trace("~ CheckCookie variable empty\n");
-            continue;
-        }
+	fclose(file_handle);
+	remove( COOKIE_FILE );
+	fclose(tmp_handle);
+	rename(TMP_FILE, COOKIE_FILE);
 
-        if (count == 0)
-            strncat(out, "Cookie: ", (size_t)max);
-        else
-            strncat(out, "; ", (size_t)max);
-        strncat(out, ck_f4, (size_t)max);
-        fclose(f);
-        strncat(out, "\r\n", (size_t)max);
-        count++;
-        return 1;       /* l'original sort ici, count reste donc à 0 avant */
-    }
-
-    fclose(f);
-    if (count > 0)
-    {
-        strncat(out, "\r\n", (size_t)max);
-        return 1;
-    }
-    return 0;
+return(FALSE);
 }
+
+/* Extraction des elements (tokens) d'une chaine */
+
+LOCAL VOID ProcessLine(BYTE *line, BYTE *p1, BYTE *p2, BYTE *p3, BYTE *p4, LONG limit)
+{
+char *token;
+	
+	LOG_printf("> ProcessLine <%s>\n",line);
+	
+	*p1 = *p2 = *p3 = *p4 = EOS;
+	
+	token = strtok(line, "\t");
+	if (token)
+	{
+		*p1=0;	/* domain */
+		strncat(p1, token, limit);
+		token = strtok(NULL, "\t");
+		if (token)
+		{
+			*p2=0;	/* path */
+			strncat(p2, token,limit);
+			token = strtok(NULL, "\t");
+			if (token)
+			{
+				*p3=0;	/* expires */
+				strncat(p3, token ,limit);
+				token = strtok(NULL, "\0");
+				if (token)
+				{
+					*p4=0;	/* datas */
+					strncat(p4, token ,limit);
+				}
+			}
+		}
+	}
+}
+
+LOCAL BOOLEAN SplitCookie( REQUEST *request, UBYTE *line )
+{
+UBYTE *token;
+UBYTE *ptr;
+BOOLEAN find_path = FALSE;
+BOOLEAN find_domain = FALSE;
+
+	LOG_printf("> SplitCookie\n");
+	
+	token = strtok(line, ";");
+	
+	version = NULL;
+	name = NULL;
+	value = NULL;
+	domain = NULL;
+	path = NULL;
+	expires = NULL;
+	secure = 0;
+
+	while ( token != NULL )
+	{
+		token = clearwhite( token );
+		LOG_printf("~ SplitCookie: token =");
+		LOG_puts("~",token);
+		LOG_puts("~",">\n");
+
+		if ( strnicmp( token, "version=", 8 ) == SUCCESS )
+		{
+			version = skipwhite( &token[8]);
+		}
+		else if ( strnicmp( token, "domain=", 7 ) == SUCCESS )
+		{
+			domain = skipwhite( &token[7]);
+			find_domain = TRUE;
+		}
+		else if ( strnicmp( token, "path=", 5 ) == SUCCESS )
+		{
+			path = skipwhite( &token[5] );
+			find_path = TRUE;
+		}
+		else if ( strnicmp( token, "expires=", 8 ) == SUCCESS )
+		{
+			expires = skipwhite( &token[8]);
+		}
+		else 	if ( (ptr=strrchr(token,'=')) != NULL ) /* variable */
+		{
+			/* Il faut d�couper la valeur */
+			name = token;
+			value = skipwhite( &ptr[1]);
+			*ptr ='\0';
+		}
+		else if ( strnicmp( token, "secure", 6 ) == SUCCESS )
+		{
+			secure = 1;
+		}
+		token = strtok(NULL, ";");
+	}
+
+	propre( name );
+	propre( value );
+	propre( path );
+	propre( expires );
+	propre( domain );
+	
+	if ( name == NULL )
+	{
+		LOG_printf("? SplitCookie: incomplete cookie data, no name found\n");
+		return(FALSE);
+	}
+	if ( value == NULL )
+	{
+		LOG_printf("? SplitCookie: incomplete cookie data, no value found\n");
+		return(FALSE);
+	}
+	if ( path == NULL )
+	{
+	UBYTE *p;
+#ifdef DEF_PATH_IS_ROOT
+		path = root_string;
+		LOG_printf("~ SplitCookie: incomplete cookie data, path set as root.\n");
+#else
+		*URI = '\0';
+		strncat( URI, request->URI, 1024);
+		p = strchr( URI, '?');
+		if ( p != NULL )	*p='\0';
+		p = strrchr( URI, '/');
+		if ( p != NULL )	*(p+1)='\0';
+		path = URI;
+		LOG_printf("~ SplitCookie: incomplete cookie data, path set as document path.\n");
+#endif
+	}
+	if ( expires == NULL )
+	{
+#ifdef NOT_SET_EXPIRE
+		expires = empty_string;
+#else
+		expires = dans_un_ans();
+#endif
+		LOG_printf("~ SplitCookie: incomplete cookie data, no expires found\n");
+	}
+	if ( domain == NULL )
+	{
+	UBYTE *ptr = strchr(request->true_server,'.');
+		if ( ptr == NULL )
+		{
+			LOG_printf("! SplitCookie: incomplete cookie data, not domain available\n");
+			return(FALSE);
+		}
+		domain = ptr;
+		LOG_printf("~ SplitCookie: incomplete cookie data, domain set as server\n");
+	}
+#ifdef notdef
+	else	if ( domain[0] != '.' )
+	{
+		LOG_printf("! SplitCookie: incomplete cookie data, domain do not start with '.'\n");
+		return(FALSE);
+	}
+#endif
+
+	LOG_printf("~ SplitCookie : name <");
+	LOG_puts("~", name);
+	LOG_puts("~",">\n");
+
+	LOG_printf("~ SplitCookie : value <");
+	LOG_puts("~", value);
+	LOG_puts("~",">\n");
+
+	LOG_printf("~ SplitCookie : domain <");
+	LOG_puts("~", domain);
+	LOG_puts("~",">\n");
+
+	LOG_printf("~ SplitCookie : path <");
+	LOG_puts("~", path);
+	LOG_puts("~",">\n");
+
+	LOG_printf("~ SplitCookie : expires <");
+	LOG_puts("~", expires);
+	LOG_puts("~",">\n");
+
+	/* ligne pour cookie.set */
+	
+	*cookie_buffer = '\0';
+	if ( version != NULL )
+	{
+		strncat( cookie_buffer, "$version=", 256);
+		strncat( cookie_buffer, version, 256);
+		strncat( cookie_buffer, "\r\n", 256);
+	}
+	strncat( cookie_buffer, name, 256);
+	strncat( cookie_buffer, "=", 256);
+	strncat( cookie_buffer, value, 256);
+/*strncat( cookie_buffer, "", 256);*/
+	if ( find_path == TRUE )
+	{
+		strncat( cookie_buffer, "; ", 256);
+		strncat( cookie_buffer, "$path=", 256);
+		strncat( cookie_buffer, path, 256);
+/*	strncat( cookie_buffer, "", 256); */
+	}
+	if ( find_domain == TRUE )
+	{
+		strncat( cookie_buffer, "; ", 256);
+		strncat( cookie_buffer, "$domain=", 256);
+		strncat( cookie_buffer, domain, 256);
+/*	strncat( cookie_buffer, "", 256); */
+	}
+
+return(TRUE);
+}
+
+LOCAL VOID propre( UBYTE *string )
+{
+	if ( string == NULL ) return;
+	
+	while ( *string != '\0' )
+	{
+		if ( ( *string == 13 ) || ( *string == 10 ) )	*string = '\0';
+		string++;
+	}
+}
+
+/* ---          EOF                 --- */

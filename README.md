@@ -2,11 +2,11 @@
 
 **HTTP module for the CAB web browser on Atari ST/TT/Falcon, over the STiK, STinG, IConnect and MiNT (GlueStik) TCP/IP stacks.**
 
-This repository holds the C sources of CAB.OVL V5.68 (January 19, 2000), reconstructed from the original binary, and the original release files.
+This repository holds the original C sources of CAB.OVL V5.68 (January 19, 2000) and the release files.
 
 Documentation: [manual](docs/MANUAL.md) and [version history](docs/HISTORY.md). In German: [Anleitung](docs/de/MANUAL.md) and [History](docs/de/HISTORY.md).
 
-CAB.OVL was written by Olivier Booklage. The reconstructed sources are covered by the GNU General Public License version 2 or later (see [License](#license)).
+CAB.OVL was written by Olivier Booklage. The sources are covered by the GNU General Public License version 2 or later (see [License](#license)).
 
 ## What it does
 
@@ -52,7 +52,7 @@ A 2005 comparison of these stacks, with MagiCNet, is on [atari-source.org](https
 3. To get another language, use the `CAB_OVL.RSC` of the `ENGLISH` or `GERMAN` folder.
 4. Restart CAB and open `http://cab.ovl` to set the module up.
 
-CAB 1.5 is the browser the reconstructed module is meant to be tested with.
+CAB 1.5 is the browser the module is meant to be tested with.
 
 ## Release files (`CABOVL/`)
 
@@ -93,56 +93,42 @@ Full history: `CABOVL/ENGLISH/HISTORY.TXT`. Main steps:
 | 3.6 | customizable resource file |
 | 3.1 | dialogs in windows (windform library by Jacques Delavoix), cookies close to RFC 2109 |
 
-## Reconstructed sources (`src/`)
+## Sources (`src/`)
 
-The original sources (`I:\STIKCOVL\*.C`) are not in the archive. These files are a reconstruction: they are equivalent to the binary, not identical to the original. None has been built with Pure C yet. Each one passes `gcc -x c -std=gnu89 -fsyntax-only`.
+The files come from `STIKCOVL.ZIP` (August 2001), the Pure C project folder `I:\STIKCOVL`. `VERSION.H` gives V5.68 of January 19, 2000. Several `.C` files are dated January 22 to 25, 2000. Whether they match the released binary exactly is not verified.
+
+Each file starts with a header: role, modules used, creation date, author, license. The original comment block is kept when it holds notes. The code is untouched.
+
+Files are in the original Atari ST character set (accents included) with CRLF line endings. Convert them before reading them on a PC, for example `iconv -f cp437 -t utf-8`.
 
 | File | Content |
 |---|---|
-| OVL.C | entry point (ovl_entry), file paths, log, TCP stack |
-| HTTP_GET.C | HTTP request, reception, redirections, get_url and post wrappers |
-| HEADER.C | response header parsing |
+| MAIN.C | module entry points for CAB (init_module, get_version, mailto) |
+| HTTP_GET.C | HTTP request, reception, redirections |
+| GET_URL.C, POST_URL.C, IF_MODIF.C, GET_INFO.C | the entry points get_url, post, get_url_if_modified, get_url_info |
+| MY_HEAD.C, HEADER.C | request header, response header parsing |
 | COOKIE.C | cookies (parsing, file, sending) |
-| CONFIG.C | configuration file (22 bytes) |
-| SETUP.C | the page http://cab.ovl/setup.html and its settings |
-| SENDICON.C, ICONS.C | gopher XBM icons (identical to the binary) |
-| REPORT.C | error and report pages |
-| GUI.C | GEM resources, cookie, password and alert dialogs |
-| MAILTO.C | mailto: links (SMTP client, base64) |
-| TCP.C | TCP stack: STiK, STinG, IConnect, name cache |
-| URL.C | URL parsing and proxies |
-| LOG.C | log and trace function |
-| FILEDBG.C | file trace wrappers, version formatters |
-| UTIL.C | skip_blanks, trim_token, parse_date |
+| AUTHEN.C | HTTP authentication |
+| CONFIG.C, SETUP.C | configuration, setup page http://cab.ovl |
+| REPORT.C, RSC.C | error pages, GEM resource and dialogs |
+| SENDICON.C | gopher XBM icons |
+| MAILTO.C | mailto: links (SMTP) |
+| TCP.C, CACHE_IP.C | TCP/IP stacks, name cache |
+| TOOLS.C, GLOBALS.C | helpers, shared definitions |
+| JAVA.C, EXEC.C, ENV.C, LANGUAGE.C, B64ENCOD.C | not in the project file `CABOVL.PDB` |
 
-Headers: CABOVL.H, CONFIG.H, REQUEST.H, HEADER.H, LOG.H, TCP.H, GUI.H, REPORT.H and OVLINFO.H (module identification strings, with the e-mail address and site replaced by xxx).
+### Missing from the archive
 
-### Not reconstructed (libraries to link)
-
-- Form window library (wf_*, addresses 0x1e33c to 0x202b9): probably windform 3.0 (name to be confirmed).
-- AES, VDI and GEMDOS bindings, Pure C standard library, floating point support.
-- Memory checking (NewMemBlk, FreeMemBlk, mem_check).
-- IConnect calls (ic_*) and STiK initialization (stik_lib_init).
-
-### Notes on the reconstruction
-
-- Function names are reliable when they come from a trace string "> Name". The others are reconstruction names (marked in a comment).
-- Binary defects are reproduced as is and flagged in a comment (two-digit year in dash-separated dates, buffers without size checks, and so on).
-- Unverified values: the `opt14` field of CONFIG, the offsets of the STiK structures, the code 0x3039 of cab->progress.
-- Interface with CAB: CABOVL.H follows the official module interface (MODULE.H and INIT.C from the CAB 1.5 developer documentation). ovl_entry returns SUPPORT_PEXEC, SUPPORT_HTTP and SUPPORT_MAILTO (0x23).
-- Source comments are in French.
+- `TCP\STIK.C` and `TCP\ICONNECT.C`, listed in the project file.
+- Pure C libraries, windform (dialog windows).
 
 ### Building
 
-Not done yet. A Pure C project file (`.PRJ`) is still to be written. It needs the `.C` files above and the Pure C standard, floating point, TOS and GEM libraries (not verified). A syntax check on a PC:
-
-    gcc -x c -std=gnu89 -fsyntax-only src/*.C
+Not tested. The project file `CABOVL.PDB`, the object files and `ICONS.LIB` are in `STIKCOVL.ZIP`, not in this repository.
 
 ## Origin and license
 
-CAB.OVL descends from the STiK module published by Tim in 1996 (STIKCOVL, one single CABOVL.C file, with its README and LICENSE.TXT). That module reuses the example skeleton by Stephane Boisson (1995, MODULE.H and INIT.C). Both are licensed under the GNU GPL version 2 or later. This reconstruction is a derivative work and is released under the same terms: see [LICENSE](LICENSE).
-
-The functions parse_date, parse_header, clear_info, split_URL, http_proxy_cfg, ftp_proxy_cfg and open_connection of CABOVL.C have the same names as those reconstructed here. parse_date is identical to the binary's, including the two-digit year defect.
+CAB.OVL descends from the STiK module published by Tim in 1996 (STIKCOVL, one single CABOVL.C file, with its README and LICENSE.TXT). That module reuses the example skeleton by Stephane Boisson (1995, MODULE.H and INIT.C). Both are licensed under the GNU GPL version 2 or later. CAB.OVL is a derivative work and is released under the same terms: see [LICENSE](LICENSE).
 
 The software is provided without warranty and used at your own risk.
 

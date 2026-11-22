@@ -1,312 +1,397 @@
 /*
- * HEADER.C - analyse des en-t√™tes HTTP de CAB.OVL (V5.68, 19 janvier 2000)
+ * header.c
+ * Analyse de l'en-tàte HTTP de la rÇponse.
  *
- * Source reconstitu√© √† partir du binaire CAB.OVL (Pure C). Les noms
- * HeaderIsReady, MakeHeadlist et parse_header viennent des cha√Ænes de
- * trace du binaire. FindHeader est un nom de reconstitution.
- * Non compil√© avec Pure C, √† v√©rifier.
+ * HeaderIsReady dÇtecte la fin de l'en-tàte dans le tampon reáu.
+ * parse_header dÇcoupe les lignes (MakeHeadlist), repäre les
+ * champs (IsHeadline) et remplit la structure REQUEST.
+ *
+ * Utilise : COOKIE.H, GLOBALS.H, TCP.H, TOOLS.H
+ * UtilisÇ par : HTTP_GET.C
+ *
+ * CrÇation : 17/03/1999
+ * Auteur : Olivier Booklage
+ * Date : Janvier 2000 (V5.68)
+ * Licence : GNU General Public License version 2 ou ultÇrieure
  */
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "HEADER.H"
-#include "LOG.H"
+/* ---       Includes externes       -- */
 
-extern char *trim_token(char *s);                   /* UTIL.C */
-extern unsigned long parse_date(char *s);           /* UTIL.C */
-extern int AddCookie();                             /* COOKIE.C */
-extern void clear_info(REQUEST *req);               /* 0x1598c */
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<string.h>
+#include	<tos.h>
+#include	<upoint/memory.h>
+#include	<portab.h>
+#include	<logfile.h>
+#include	<cab\module.h>
+#include	<sting\transprt.h>		/* Pour  TESTABLISH */
 
-/* Contr√¥le m√©moire : le fichier et la ligne de l'appelant sont m√©moris√©s. */
-extern int NewMemBlk(MEMBLK *blk, long n, long size, char *file, long line);    /* 0x1c74c */
-extern void FreeMemBlk(MEMBLK *blk, char *file, long line);                     /* 0x1c880 */
+#include	"globals.h"
+#include	"tcp.h"
+#include	"cookie.h"
+#include	"tools.h"
 
-/* Cherche la premi√®re ligne qui commence par name, sans tenir compte de la
-   casse. S'arr√™te √† la premi√®re ligne vide. Renvoie son indice, ou -1. */
-long FindHeader(name, hl)
-char *name;
-HEADLIST *hl;
+/* ---       Includes internes       -- */
+
+#include "header.h"
+
+/* --- Constantes globales internes --- */
+
+#define LINES 200		/* devrait àtre rÇglable par soft */
+
+/* --- Structures globales internes --- */
+
+/* --- Variables globales  internes --- */
+
+/* ---     Prototypage interne      --- */
+
+/* ---         Fonctions            --- */
+
+LOCAL long MakeHeadlist ( char *start, txtdb *lst, memdb *mem );
+
+/* ----- RÇgle et parse le header ----- */
+
+WORD HeaderIsReady( REQUEST *request, memdb *header)
 {
-    long i;
+INT i;
+INT retour;
+LONG headlength;
+memdb	ptrsmem= _MEMDB;
+txtdb		textlst	= _TXTDB;	/* Structure de tableau de lignes de texte */
 
-    for (i = 0; i < hl->count; i++)
-    {
-        if (hl->list[i].line[0] == 0)
-            break;
-        if (strnicmp(name, hl->list[i].line, strlen(name)) == 0)
-            return i;
-    }
-    return -1;
+	LOG_printf("> HeaderIsReady ? on header buf of %ld bytes\n", header->used);
+
+	if ( header->used <= 0L )	return(HEADER_EMPTY);
+
+#ifdef notdef
+
+	for ( i = 0; i < header->used; i++ )
+	{
+LOG_printf("~ caractere numero %d : %d <%c>\n",i,((UBYTE*)header->beg)[i],((UBYTE*)header->beg)[i]);
+	}
+
+#endif
+
+	/* Le header est arrivÇ : */
+	
+	if (	(strstr( (UBYTE*)header->beg , "\r\n\r\n" ) != NULL) ||
+				(strstr( (UBYTE*)header->beg , "\n\r\n\r" ) != NULL) ||
+				(strstr( (UBYTE*)header->beg , "\n\n" ) != NULL) ||
+				(strstr( (UBYTE*)header->beg , "\r\r" ) != NULL) )
+	{
+
+		LOG_printf("~ HeaderIsReady: Header complete\n");
+		
+#ifdef notdef
+
+		if ( strstr( (UBYTE*)header->beg , "\r\n\r\n" ) != NULL )
+			LOG_printf("~ This server use \\r\\n\\r\\n endofline\n");
+		else
+		if ( strstr( (UBYTE*)header->beg , "\n\r\n\r" ) != NULL )
+			LOG_printf("~ This server use \\n\\r\\n\\r endofline\n");
+		else
+		if ( strstr( (UBYTE*)header->beg , "\n\n" ) != NULL )
+			LOG_printf("~ This server use \\n\\n endofline\n");
+		else
+		if ( strstr( (UBYTE*)header->beg , "\r\r" ) != NULL )
+			LOG_printf("~ This server use \\r\\r endofline\n");
+		else
+			LOG_printf("~ This server use ???? imposible endofline!?\n");
+#endif		
+		
+		/* MÇmoire pour le tableau de pointeurs */
+
+		if( !NewMemBlk(&ptrsmem,LINES,sizeof(tline)) )
+		{
+			LOG_printf("! HeaderIsReady: NewMemBlk error, low memory.\n");
+			FreeMemBlk(&ptrsmem);
+			return(HEADER_LOW_MEMORY);
+		}
+
+		textlst.line 		= ptrsmem.beg;
+		textlst.len			= LINES;
+
+		/* DÇcoupage de l'entàte */
+
+		if ( (headlength=MakeHeadlist ((UBYTE*)header->beg, &textlst,header)) <=0 )
+		{
+
+			LOG_printf("! HeaderIsReady: No MakeHeadlist in <\n");
+			LOG_puts("!",(UBYTE*)header->beg);
+			LOG_puts("!","\n>\n");
+
+			FreeMemBlk(&ptrsmem);
+			return(HEADER_BAD_FORMAT);
+		}
+
+		LOG_printf("~ MakeHeadlist count %ld lines (0 to %ld) in %ld bytes of header\n",textlst.used,textlst.used-1, headlength);
+
+		for(i=0;i<textlst.used;i++)
+		{
+			LOG_printf("~ MakeHeadlist Line (%d):<",i);
+			LOG_puts  ("~",clearwhite(textlst.line[i].str));
+			LOG_puts  ("~",">\n");
+		}
+
+		retour=parse_header( request, &textlst);
+
+		/* dÇplacer les donnÇes */
+	
+/*	LOG_printf("~ reste %ld - %ld = %ld data apres le header\n",header->used,headlength,header->used-headlength); */
+
+		header->used = header->used - headlength;
+		memcpy(header->beg, (UBYTE*)header->beg + headlength , header->used);
+
+		FreeMemBlk(&ptrsmem);
+
+		if ( retour == FALSE )
+		{
+			LOG_printf("! parse_header error <%d>\n", retour);
+			return( HEADER_BAD_FORMAT );
+		}
+
+		return( retour ); /* status HTTP */
+	}
+
+return(WAITING_HEADER);
 }
 
-/* D√©coupe l'en-t√™te en lignes : chaque fin de ligne est remplac√©e par 0 et
-   le d√©but de chaque ligne est rang√© dans hl->list. L'en-t√™te se termine √†
-   la premi√®re ligne vide. Renvoie sa taille en octets, 0 en cas d'√©chec. */
-long MakeHeadlist(hdr, hl, hb)
-char *hdr;
-HEADLIST *hl;
-HEADERBUF *hb;
+
+
+/* ---------------------------------------------------------------------- */
+
+
+
+/* Version originale de UPOINT, celle de weblight ne marche pas */
+
+LOCAL long MakeHeadlist ( char *start, txtdb *lst, memdb *mem )	
 {
-    char *p = hdr;
-    long n = 0;
+  char *c = start;
+  long  j = 0;
 
-    hl->count = 0;
-    if (p < hb->data || p >= hb->end || hl->max <= 0)
-        return 0;
-    hl->list[n++].line = p;
+  
+/*
+  assert ( lst->len  >  0 );
+  assert ( lst->line != NULL );
+*/
+    
+  lst->used = 0;
+    
+  
+  if (( c >= mem->beg ) &&  
+      ( c <  mem->end ) &&  
+      ( lst->len > 0  )) {
+  
+    lst->line[j++].str = c;				/* erste Zeile				 */									
+    	
+    while ( c <= mem->end ) {				/* Pointerirrlauf verhindern */
+    				
+      if ( *c == '\x0a' ) {					/* Zeilenenden in \0 wandeln */
+      					
+        *c++ = '\0';
+		
+		if ( c <= mem->end ) {
+		
+			if ( j < lst->len )				/* nÑchster Zeilenbegin 	 */
+          	  lst->line[j++].str = c;
 
-    while (p <= hb->end)
-    {
-        if (*p != '\n')
-        {
-            p++;
-            continue;
-        }
-        *p++ = 0;
-        if (p > hb->end)
-            continue;
-        if (n < hl->max)
-            hl->list[n++].line = p;
-        if (p < hb->end && p[0] == '\r' && p[1] == '\n')
-            *p++ = 0;
-        if (*p == '\n')
-        {
-            *p++ = 0;
-            hl->count = n;
-            return (long)(p - hdr);
-        }
-        if (n == hl->max)
-            return 0;
+ 											/* CR/LF */
+        	if ( c < mem->end )
+	          if (( *c == '\x0d' ) && ( *(c+1) == '\x0a' )) 
+         		 *c++ = '\0';  
+        
+        	if ( *c == '\x0A' ) {			/* zweites LF */
+           
+          		*c++ = '\0';
+           	
+           		lst->used = j;				
+          									/* KopflÑnge zurÅckgeben */
+          					
+          		return ((long)( c - start ));
+        	}
+       
+        	if ( j == lst->len )			/* Textpointerliste voll 		*/	
+          		return FALSE;
+		}
+      }
+      else
+         c++;      
     }
-    return 0;
+  }
+
+  /* Kopf konnte nicht ... 	*/
+  
+  return 0;
 }
 
-/* Lit les champs de l'en-t√™te et les range dans req. Renvoie le code HTTP,
-   ou 0 si la ligne d'√©tat est absente ou n'est pas en HTTP 1.0 ou 1.1. */
-int parse_header(req, hl)
-REQUEST *req;
-HEADLIST *hl;
+int parse_header( REQUEST *request ,txtdb *textlst )
 {
-    int status = 0;
-    long i;
-    char v[4];
-    long double x;
-    char *value;
+LONG j;
+UBYTE *c,*p;
+UBYTE tmp[4];
+INT return_code=0;
+double http_version=0;
 
-    trace("> parse_header\n");
-    clear_info(req);
+	LOG_printf("> parse_header\n");
 
-    i = FindHeader("HTTP/", hl);
-    if (i >= 0)
-    {
-        req->status_text[0] = 0;
-        strncat(req->status_text, trim_token(hl->list[i].line + 9), 0xff);
-        trace("~ HTTP/ = <%s>\n", req->status_text);
+	clear_info(request);
 
-        v[0] = 0;
-        strncat(v, hl->list[i].line + 5, 3);
-        x = atof(v);
-        if (x == 1.0 || x == 1.1)
-        {
-            v[0] = 0;
-            strncat(v, hl->list[i].line + 9, 3);
-            status = atoi(v);
-            if (status >= 400)
-                trace("! HTTP error <%s>\n", req->status_text);
-        }
-        else
-        {
-            /* L'original passe ici l'adresse de l'entr√©e de la liste, pas la ligne. */
-            trace("! HTTP/ is not 1.0 or 1.1 in <%s>\n", (char *)&hl->list[i]);
-            status = 0;
-        }
-    }
+	if (( j = IsHeadline ( "HTTP/", textlst )) >= 0 )
+	{
+ 		*request->http_line = '\0';
+ 		strncat( request->http_line, clearwhite ( &textlst->line[j].str[9] ), 255 );
+		LOG_printf("~ HTTP/ = <%s>\n", request->http_line);
+ 		*tmp = '\0';
+		http_version=atof(strncat(tmp, &textlst->line[j].str[5], 3));
+		if ( (http_version==1.0) || (http_version==1.1) )
+		{
+	 		*tmp = '\0';
+			return_code=atoi(strncat(tmp, &textlst->line[j].str[9], 3));
+			if ( return_code >= 400 )
+				LOG_printf("! HTTP error <%s>\n", request->http_line);
+		}
+		else
+		{
+			LOG_printf("! HTTP/ is not 1.0 or 1.1 in <%s>\n",&textlst->line[j]);
+			return_code=FALSE;
+		}
+	}
 
-    i = FindHeader("Content-Length:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 15);
-        req->content_length = atol(value);
-        trace("~ Content-Length = <%ld>\n", req->content_length);
-    }
+	if (( j = IsHeadline ( "Content-Length:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[15] );
+		request->content_length = atol( c );
+ 		LOG_printf("~ Content-Length = <%ld>\n", request->content_length);
+	}
 
-    i = FindHeader("Content-Encoding:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 17);
-        req->encoding[0] = 0;
-        strncpy(req->encoding, value, 0xff);
-        trace("~ Content-Encoding = <%s>\n", req->encoding);
-    }
+	if (( j = IsHeadline ( "Content-Encoding:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[17] );
+ 		*request->content_encoding = '\0';
+		strncpy(request->content_encoding, c, 255);
+		LOG_printf("~ Content-Encoding = <%s>\n", request->content_encoding);
+	}
 
-    i = FindHeader("Content-Type:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 13);
-        if (strchr(value, ';') != 0)
-            *strchr(value, ';') = 0;
-        req->content_type[0] = 0;
-        strncpy(req->content_type, value, 0xff);
-        trace("~ Content-Type = <%s>\n", req->content_type);
-    }
+	if (( j = IsHeadline ( "Content-Type:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[13] );
+ 		if ( (p=strchr( c, ';' )) != NULL )	*p = '\0';
+ 		*request->content_type = '\0';
+		strncpy(request->content_type, c, 255);
+		LOG_printf("~ Content-Type = <%s>\n", request->content_type);
+	}
 
-    i = FindHeader("Location:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 9);
-        req->location[0] = 0;
-        strncpy(req->location, value, 0xff);
-        trace("~ Location = <");
-        trace_str("~", req->location);
-        trace_str("~", ">\n");
-    }
+	if (( j = IsHeadline ( "Location:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[9] );
+ 		*request->location = '\0';
+		strncpy(request->location, c, 255);
+		LOG_printf("~ Location = <");
+		LOG_puts("~",request->location);
+		LOG_puts("~",">\n");
+	}
 
-    i = FindHeader("MIME-Version:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 13);
-        req->mime_version = atof(value);
-        /* Le format "%f.1" est celui de l'original. */
-        trace("~ MIME-Version = <%f.1>\n", req->mime_version);
-    }
+	if (( j = IsHeadline ( "MIME-Version:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[13] );
+		request->mime_version=atof(c);
+		LOG_printf("~ MIME-Version = <%f.1>\n", request->mime_version);
+	}
 
-    i = FindHeader("Pragma:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 7);
-        req->pragma[0] = 0;
-        strncpy(req->pragma, value, 0xff);
-        trace("~ Pragma = %s\n", req->pragma);
-    }
+	if (( j = IsHeadline ( "Pragma:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[7] );
+ 		*request->pragma = '\0';
+		strncpy(request->pragma, c, 255);
+		LOG_printf("~ Pragma = %s\n", request->pragma);
+	}
 
-    i = FindHeader("Server:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 7);
-        req->server_hdr[0] = 0;
-        strncpy(req->server_hdr, value, 0xff);
-        trace("~ Server = %s\n", req->server_hdr);
-    }
+	if (( j = IsHeadline ( "Server:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[7] );
+ 		*request->host_server = '\0';
+		strncpy(request->host_server, c, 255);
+		LOG_printf("~ Server = %s\n", request->host_server);
+	}
 
-    i = FindHeader("WWW-Authenticate:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 16);
-        req->www_auth[0] = 0;
-        strncpy(req->www_auth, value, 0xff);
-        trace("~ WWW-Authenticate = %s\n", req->www_auth);
-    }
+	if (( j = IsHeadline ( "WWW-Authenticate:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[16] );
+ 		*request->www_authenticate = '\0';
+		strncpy(request->www_authenticate, c, 255);
+		LOG_printf("~ WWW-Authenticate = %s\n", request->www_authenticate);
+	}
 
-    i = FindHeader("Last-Modified:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 14);
-        req->last_modified = (long)parse_date(value);
-        trace("~ Last-Modified = %s (%ld)\n", value, req->last_modified);
-    }
+	if (( j = IsHeadline ( "Last-Modified:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[14] );
+ 		request->last_modified = parse_date(c);
+		LOG_printf("~ Last-Modified = %s (%ld)\n", c, request->last_modified);
+	}
 
-    i = FindHeader("Date:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 5);
-        req->date = (long)parse_date(value);
-        trace("~ Date = %s (%ld)\n", value, req->date);
-    }
+	if (( j = IsHeadline ( "Date:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[5] );
+		request->date=parse_date(c);
+		LOG_printf("~ Date = %s (%ld)\n", c, request->date);
+	}
 
-    i = FindHeader("Expires:", hl);
-    if (i >= 0)
-    {
-        value = trim_token(hl->list[i].line + 8);
-        req->expires = (long)parse_date(value);
-        trace("~ Detect 'Expires' = %s (%ld)\n", value, req->expires);
-    }
+	if (( j = IsHeadline ( "Expires:", textlst )) >= 0 )
+	{
+ 		c = clearwhite ( &textlst->line[j].str[8] );
+		request->expires=parse_date(c);
+		LOG_printf("~ Detect 'Expires' = %s (%ld)\n", c, request->expires);
+	}
 
-    /* Tous les Set-cookie de l'en-t√™te, pas seulement le premier. */
-    for (i = 0; i < hl->count; i++)
-    {
-        if (hl->list[i].line[0] != 0
-            && strnicmp(hl->list[i].line, "Set-cookie:", 11) == 0)
-        {
-            value = trim_token(hl->list[i].line + 11);
-            trace("~ Detect 'Set-cookie' = <");
-            trace_str("~", value);
-            trace_str("~", ">\n");
-            AddCookie(req, value);
-        }
-    }
+	for ( j=0; j < textlst->used; j++ )
+	{
+		if ( textlst->line[j].str[0] != '\0' )
+		{
+			if ( !strnicmp ( "Set-cookie:", textlst->line[j].str, 11))
+			{
+		 		c = clearwhite ( &textlst->line[j].str[11] );
+				LOG_printf("~ Detect 'Set-cookie' = <");
+				LOG_puts("~", c);
+				LOG_puts("~", ">\n");
+				AddCookie( request, c );
+			}
+		}
+	}
+	
+	LOG_printf("~ parse_header return(%d)\n",return_code);
 
-    trace("~ parse_header return(%d)\n", status);
-    return status;
+return(return_code);
 }
 
-/* Indique si l'en-t√™te de la r√©ponse est complet. Si oui, l'analyse puis
-   le retire du tampon. Voir HEADER.H pour les valeurs de retour. */
-int HeaderIsReady(req, hb)
-REQUEST *req;
-HEADERBUF *hb;
+/* ----- Outils UPOINT ----- */
+
+/*
+	IsHeadline prÅft, ob im Messagehead eine Zeile vorkommt, die
+	mit dem Åbergebenen String (non-casesensitive) beginnt.
+	Headende wird durch Leerzeile erkannt.
+
+	öbergabe: Headzeile, Text
+	RÅckgabe: Zeilenindex oder -1
+*/
+
+long IsHeadline ( const char *s, const txtdb *list )
 {
-    MEMBLK blk;
-    HEADLIST hl;
-    long n;
-    long i;
-    int status;
+long	i;
 
-    memset(&blk, 0, sizeof(blk));
-    memset(&hl, 0, sizeof(hl));
+/*LOG_printf("> IsHeadline\n");*/
 
-    trace("> HeaderIsReady ? on header buf of %ld bytes\n", hb->used);
-    if (hb->used <= 0)
-        return -1;
+/*
+	assert ( s && list );
+*/
 
-    /* Fin d'en-t√™te : une ligne vide, avec toutes les variantes CR et LF. */
-    if (strstr(hb->data, "\r\n\r\n") == 0
-        && strstr(hb->data, "\n\r\n\r") == 0
-        && strstr(hb->data, "\n\n") == 0
-        && strstr(hb->data, "\r\r") == 0)
-        return 1;
+	for ( i=0; i < list->used; i++ )
+	{
+		if ( list->line[i].str[0] == '\0' )  										break;
+		if ( !strnicmp ( s, list->line[i].str, strlen ( s ))) 	return i;
+	}
 
-    trace("~ HeaderIsReady: Header complete\n");
-
-    if (!NewMemBlk(&blk, 200L, 6L, __FILE__, (long)__LINE__))
-    {
-        trace("! HeaderIsReady: NewMemBlk error, low memory.\n");
-        FreeMemBlk(&blk, __FILE__, (long)__LINE__);
-        return -2;
-    }
-    hl.list = (HEADENTRY *)blk.ptr;
-    hl.max = 200;
-
-    n = MakeHeadlist(hb->data, &hl, hb);
-    if (n <= 0)
-    {
-        trace("! HeaderIsReady: No MakeHeadlist in <\n");
-        trace_str("!", hb->data);
-        trace_str("!", "\n>\n");
-        FreeMemBlk(&blk, __FILE__, (long)__LINE__);
-        return -3;
-    }
-
-    trace("~ MakeHeadlist count %ld lines (0 to %ld) in %ld bytes of header\n",
-          hl.count, hl.count - 1, n);
-    for (i = 0; i < hl.count; i++)
-    {
-        trace("~ MakeHeadlist Line (%d):<", (int)i);
-        trace_str("~", trim_token(hl.list[i].line));
-        trace_str("~", ">\n");
-    }
-
-    status = parse_header(req, &hl);
-
-    /* Retire l'en-t√™te du tampon, le corps du document reste. */
-    hb->used -= n;
-    memmove(hb->data, hb->data + n, (size_t)hb->used);
-    FreeMemBlk(&blk, __FILE__, (long)__LINE__);
-
-    if (status == 0)
-    {
-        trace("! parse_header error <%d>\n", status);
-        return -3;
-    }
-    return status;
+return(-1);
 }
+
+/* ---          EOF                 --- */

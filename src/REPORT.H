@@ -1,17 +1,30 @@
 /*
- * REPORT.H - pages d'erreur et de rapport de CAB.OVL (V5.68)
+ * report.h
+ * Prototypes des rapports d'erreur.
  *
- * ReconstituÃ© Ã  partir du binaire CAB.OVL. Prototypes de REPORT.C.
+ * Interface de REPORT.C.
+ *
+ * Utilis‚ par : HTTP_GET.C, MAILTO.C, REPORT.C, SETUP.C
+ *
+ * Cr‚ation : 25/03/1999
+ * Auteur : Olivier Booklage
+ * Date : Janvier 2000 (V5.68)
+ * Licence : GNU General Public License version 2 ou ult‚rieure
  */
 
-#ifndef REPORT_H
-#define REPORT_H
+/* --- Export Constantes globales   --- */
 
-#include "REQUEST.H"
+/* --- Export Structures globales   --- */
 
-void report_error(REQUEST *req, char *file, int code, short *fh);   /* 0x146ee */
-int ReportRequestText(REQUEST *req, char *text);                    /* 0x14760 */
-void file_error(char *file, int op, short *err);                    /* 0x14952 */
-int ReportText(char *url, char *file, short *fh, char *text);       /* 0x149c0 */
+/* --- Export Variables globales    --- */
 
-#endif
+/* ---    Export Prototypage        --- */
+
+INT ReportRequestIndex( REQUEST *request, UBYTE *file_name, INT *file_handle, INT rsc_index);
+INT ReportRequestText( REQUEST *request, UBYTE *texte);
+INT ReportRequestCode( REQUEST *request, INT code);
+
+INT ReportRscMessage( UBYTE *file_name, INT *file_handle, INT index);
+INT ReportText( UBYTE *URL, UBYTE *file_name, INT *file_handle, UBYTE *texte);
+
+/* ---          EOF                 --- */
